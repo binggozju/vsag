@@ -197,6 +197,19 @@ public:
         j["query_computer_count"].SetUint64(query_computer_count.load(std::memory_order_relaxed));
         j["parallel_search_fallback_count"].SetUint64(
             parallel_search_fallback_count.load(std::memory_order_relaxed));
+        j["sindi_search_time"].SetUint64(sindi_search_time_us.load(std::memory_order_relaxed));
+        j["sindi_query_window_time"].SetUint64(
+            sindi_query_window_time_us.load(std::memory_order_relaxed));
+        j["sindi_heap_insert_time"].SetUint64(
+            sindi_heap_insert_time_us.load(std::memory_order_relaxed));
+        j["sindi_rerank_time"].SetUint64(sindi_rerank_time_us.load(std::memory_order_relaxed));
+        j["sindi_window_count"].SetUint64(sindi_window_count.load(std::memory_order_relaxed));
+        j["sindi_rerank_candidate_count"].SetUint64(
+            sindi_rerank_candidate_count.load(std::memory_order_relaxed));
+        j["sindi_term_list_heap_insert_enabled"].SetBool(
+            sindi_term_list_heap_insert_enabled.load(std::memory_order_relaxed));
+        j["sindi_filter_limit_reached"].SetBool(
+            sindi_filter_limit_reached.load(std::memory_order_relaxed));
         j["distance_evaluations"].SetUint64(distance_evaluations.load(std::memory_order_relaxed));
         for (uint64_t i = 0; i < distance_evaluations_by_phase.size(); ++i) {
             j["distance_evaluations_by_phase"]
@@ -233,6 +246,15 @@ public:
     std::atomic<uint32_t> rabitq_reorder_fallback_full_count{0};
     std::atomic<uint32_t> query_computer_count{0};
     std::atomic<uint32_t> parallel_search_fallback_count{0};
+    // SINDI search-stage diagnostics. Values are per result; time is in microseconds.
+    std::atomic<uint64_t> sindi_search_time_us{0};
+    std::atomic<uint64_t> sindi_query_window_time_us{0};
+    std::atomic<uint64_t> sindi_heap_insert_time_us{0};
+    std::atomic<uint64_t> sindi_rerank_time_us{0};
+    std::atomic<uint64_t> sindi_window_count{0};
+    std::atomic<uint64_t> sindi_rerank_candidate_count{0};
+    std::atomic<bool> sindi_term_list_heap_insert_enabled{false};
+    std::atomic<bool> sindi_filter_limit_reached{false};
     std::atomic<uint64_t> distance_evaluations{0};
     std::array<std::atomic<uint64_t>, static_cast<uint8_t>(DistanceEvaluationPhase::COUNT)>
         distance_evaluations_by_phase{};
@@ -292,6 +314,19 @@ public:
         result.query_computer_count = base.query_computer_count.load(std::memory_order_relaxed);
         result.parallel_search_fallback_count =
             base.parallel_search_fallback_count.load(std::memory_order_relaxed);
+        result.sindi_search_time_us = base.sindi_search_time_us.load(std::memory_order_relaxed);
+        result.sindi_query_window_time_us =
+            base.sindi_query_window_time_us.load(std::memory_order_relaxed);
+        result.sindi_heap_insert_time_us =
+            base.sindi_heap_insert_time_us.load(std::memory_order_relaxed);
+        result.sindi_rerank_time_us = base.sindi_rerank_time_us.load(std::memory_order_relaxed);
+        result.sindi_window_count = base.sindi_window_count.load(std::memory_order_relaxed);
+        result.sindi_rerank_candidate_count =
+            base.sindi_rerank_candidate_count.load(std::memory_order_relaxed);
+        result.sindi_term_list_heap_insert_enabled =
+            base.sindi_term_list_heap_insert_enabled.load(std::memory_order_relaxed);
+        result.sindi_filter_limit_reached =
+            base.sindi_filter_limit_reached.load(std::memory_order_relaxed);
         result.distance_evaluations = base.distance_evaluations.load(std::memory_order_relaxed);
         for (uint64_t i = 0; i < result.distance_evaluations_by_phase.size(); ++i) {
             result.distance_evaluations_by_phase[i] =

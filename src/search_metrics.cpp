@@ -28,7 +28,7 @@ MetricsSchema::MetricsSchema(std::vector<MetricsField> fields) : fields_(std::mo
 
 bool
 MetricsSchema::Contains(std::string_view key) const {
-    // The baseline has 19 fields; a linear scan avoids a second owning lookup container.
+    // The baseline is intentionally small; a linear scan avoids a second owning lookup container.
     return std::any_of(fields_.begin(), fields_.end(), [&key](const auto& field) {
         return std::string_view(field.name) == key;
     });
@@ -67,6 +67,24 @@ MetricsSchema::Base() {
         {"parallel_search_fallback_count",
          "Parallel search fallback count",
          MetricValueType::UINT32},
+        {"sindi_search_time", "SINDI search time in microseconds", MetricValueType::UINT64},
+        {"sindi_query_window_time",
+         "SINDI QueryWindow time in microseconds",
+         MetricValueType::UINT64},
+        {"sindi_heap_insert_time",
+         "SINDI heap insertion time in microseconds",
+         MetricValueType::UINT64},
+        {"sindi_rerank_time", "SINDI rerank time in microseconds", MetricValueType::UINT64},
+        {"sindi_window_count", "SINDI searched window count", MetricValueType::UINT64},
+        {"sindi_rerank_candidate_count",
+         "SINDI rerank candidate count",
+         MetricValueType::UINT64},
+        {"sindi_term_list_heap_insert_enabled",
+         "Whether SINDI enabled term-list heap insertion",
+         MetricValueType::BOOL},
+        {"sindi_filter_limit_reached",
+         "Whether SINDI reached the filter callback limit",
+         MetricValueType::BOOL},
         {"distance_evaluations", "Total distance evaluations", MetricValueType::UINT64},
         {"distance_evaluations_by_phase",
          "Distance evaluations by search phase",
@@ -99,6 +117,15 @@ SearchResultMetrics::Dump() const {
     json["rabitq_reorder_fallback_full_count"].SetUint64(rabitq_reorder_fallback_full_count);
     json["query_computer_count"].SetUint64(query_computer_count);
     json["parallel_search_fallback_count"].SetUint64(parallel_search_fallback_count);
+    json["sindi_search_time"].SetUint64(sindi_search_time_us);
+    json["sindi_query_window_time"].SetUint64(sindi_query_window_time_us);
+    json["sindi_heap_insert_time"].SetUint64(sindi_heap_insert_time_us);
+    json["sindi_rerank_time"].SetUint64(sindi_rerank_time_us);
+    json["sindi_window_count"].SetUint64(sindi_window_count);
+    json["sindi_rerank_candidate_count"].SetUint64(sindi_rerank_candidate_count);
+    json["sindi_term_list_heap_insert_enabled"].SetBool(
+        sindi_term_list_heap_insert_enabled);
+    json["sindi_filter_limit_reached"].SetBool(sindi_filter_limit_reached);
     json["distance_evaluations"].SetUint64(distance_evaluations);
     for (uint64_t i = 0; i < distance_evaluations_by_phase.size(); ++i) {
         json["distance_evaluations_by_phase"]

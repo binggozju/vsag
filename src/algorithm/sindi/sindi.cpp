@@ -16,6 +16,7 @@
 #include "sindi.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -58,6 +59,13 @@ constexpr int64_t SINDI_RERANK_FLAT_FORMAT_DMQ = 3;
 constexpr const char* SINDI_POSTING_LIST_FORMAT_VERSION_KEY = "sindi_posting_list_format_version";
 constexpr int64_t SINDI_SORTED_POSTING_LIST_FORMAT_VERSION = 1;
 
+uint64_t
+ElapsedMicros(const std::chrono::steady_clock::time_point& begin) {
+    return static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - begin)
+            .count());
+}
 bool
 has_sorted_posting_lists(const JsonType& basic_info) {
     return basic_info.Contains(SINDI_POSTING_LIST_FORMAT_VERSION_KEY) and
@@ -831,6 +839,32 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
                    SearchStatistics* statistics,
                    const uint64_t* filter_callback_remaining,
                    const SindiMetadataSearchRoute& metadata_route) const {
+    const auto search_begin = std::chrono::steady_clock::now();
+    uint64_t query_window_time_us = 0;
+    uint64_t heap_insert_time_us = 0;
+    uint64_t rerank_time_us = 0;
+    uint64_t window_count = 0;
+    uint64_t rerank_candidate_count = 0;
+    bool filter_limit_reached = false;
+    const auto publish_sindi_statistics = [&]() {
+        if (statistics == nullptr) {
+            return;
+        }
+        statistics->sindi_search_time_us.fetch_add(
+            ElapsedMicros(search_begin), std::memory_order_relaxed);
+        statistics->sindi_query_window_time_us.fetch_add(
+            query_window_time_us, std::memory_order_relaxed);
+        statistics->sindi_heap_insert_time_us.fetch_add(
+            heap_insert_time_us, std::memory_order_relaxed);
+        statistics->sindi_rerank_time_us.fetch_add(rerank_time_us, std::memory_order_relaxed);
+        statistics->sindi_window_count.fetch_add(window_count, std::memory_order_relaxed);
+        statistics->sindi_rerank_candidate_count.fetch_add(
+            rerank_candidate_count, std::memory_order_relaxed);
+        statistics->sindi_term_list_heap_insert_enabled.store(
+            use_term_lists_heap_insert, std::memory_order_relaxed);
+        statistics->sindi_filter_limit_reached.store(
+            filter_limit_reached, std::memory_order_relaxed);
+    };
     auto* search_allocator = allocator != nullptr ? allocator : allocator_;
     // computer and heap
     MaxHeap heap(search_allocator);
@@ -860,8 +894,11 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
         computer->SetTermPruneEnabled(
             not metadata_filter_.RequiresFullTermScan(metadata_route, window_id, window_size_));
         // compute
+        const auto query_window_begin = std::chrono::steady_clock::now();
         term_datacell_->QueryWindow(
             dists.data(), window_id, computer, use_term_lists_heap_insert, query_context);
+        query_window_time_us += ElapsedMicros(query_window_begin);
+        ++window_count;
 
         if (reasoning_ctx != nullptr) {
             selected_buckets->push_back(static_cast<BucketIdType>(cur));
@@ -880,6 +917,7 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
         }
 
         // insert heap
+        const auto heap_insert_begin = std::chrono::steady_clock::now();
         bool filter_callback_limit_reached = false;
         if (use_term_lists_heap_insert) {
             filter_callback_limit_reached =
@@ -908,7 +946,9 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
                                                   inner_param.is_inner_id_allowed != nullptr,
                                                   filter_callback_remaining);
         }
+        heap_insert_time_us += ElapsedMicros(heap_insert_begin);
         if (filter_callback_limit_reached) {
+            filter_limit_reached = true;
             break;
         }
         if (inner_param.time_cost != nullptr and inner_param.time_cost->CheckOvertime()) {
@@ -929,9 +969,11 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
 
     // rerank
     if (use_reorder_) {
+        const auto rerank_begin = std::chrono::steady_clock::now();
         // high precision
         float cur_heap_top = std::numeric_limits<float>::max();
         auto candidate_size = heap.size();
+        rerank_candidate_count = candidate_size;
         auto high_precise_heap = std::make_shared<StandardHeap<true, false>>(search_allocator, -1);
         const auto& rerank_query = original_query ? *original_query : computer->raw_query_;
         auto* rerank_datacell = rerank_flat_.get();
@@ -985,6 +1027,8 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
             heap.pop();
         }
 
+        rerank_time_us = ElapsedMicros(rerank_begin);
+        publish_sindi_statistics();
         return collect_heap_results(high_precise_heap, search_allocator);
     }
 
@@ -1000,6 +1044,7 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
 
     auto [results, ret_dists, ret_ids] = create_fast_dataset(cur_size, search_allocator);
     if (cur_size == 0) {
+        publish_sindi_statistics();
         return results;
     }
 
@@ -1013,6 +1058,7 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
         heap.pop();
     }
 
+    publish_sindi_statistics();
     return results;
 }
 
