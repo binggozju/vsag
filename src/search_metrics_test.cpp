@@ -33,7 +33,15 @@ TEST_CASE("Search metrics snapshot preserves counters", "[ut][search_metrics]") 
     CHECK(snapshot.DistanceEvaluations(vsag::DistanceEvaluationPhase::APPROXIMATE) == 7);
     CHECK(snapshot.DistanceEvaluations(vsag::DistanceEvaluationBackend::FP32) == 7);
     CHECK(vsag::MetricsSchema::Base().Contains("distance_evaluations"));
-    CHECK(vsag::MetricsSchema::Base().Fields().size() == 19);
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_search_time"));
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_query_window_time"));
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_heap_insert_time"));
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_rerank_time"));
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_window_count"));
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_rerank_candidate_count"));
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_term_list_heap_insert_enabled"));
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_filter_limit_reached"));
+    CHECK(vsag::MetricsSchema::Base().Fields().size() == 27);
     CHECK(std::string(vsag::DistanceEvaluationPhaseName(
               static_cast<vsag::DistanceEvaluationPhase>(255))) == "unknown");
     CHECK(std::string(vsag::DistanceEvaluationBackendName(
