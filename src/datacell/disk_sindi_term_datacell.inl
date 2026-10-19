@@ -129,6 +129,77 @@ DiskSindiTermDataCell<IOTmpl>::fill_heap_initial(uint32_t id,
 template <typename IOTmpl>
 template <InnerSearchMode mode, InnerSearchType type>
 bool
+DiskSindiTermDataCell<IOTmpl>::InsertHeapByCandidates(
+    float* dists,
+    const Vector<uint16_t>& candidate_ids,
+    MaxHeap& heap,
+    const InnerSearchParam& param,
+    uint32_t offset_id,
+    uint64_t* heap_candidate_visit_count,
+    const uint64_t* filter_callback_remaining) const {
+    float cur_heap_top = std::numeric_limits<float>::max();
+    const auto n_candidate = param.ef;
+    const auto radius = param.radius;
+    const auto& filter = param.is_inner_id_allowed;
+    if constexpr (mode == InnerSearchMode::KNN_SEARCH) {
+        if (heap.size() == n_candidate) {
+            cur_heap_top = heap.top().first;
+        }
+    } else {
+        cur_heap_top = radius - 1;
+    }
+
+    uint64_t pos = 0;
+    if constexpr (mode == InnerSearchMode::KNN_SEARCH) {
+        while (pos < candidate_ids.size() && heap.size() < n_candidate) {
+            const auto id = candidate_ids[pos++];
+            ++(*heap_candidate_visit_count);
+            const bool heap_filled = fill_heap_initial<type>(id,
+                                                              dists[id],
+                                                              cur_heap_top,
+                                                              heap,
+                                                              offset_id,
+                                                              n_candidate,
+                                                              filter,
+                                                              param.distance_threshold,
+                                                              param.enable_reorder,
+                                                              param.reasoning_ctx);
+            if constexpr (type == InnerSearchType::WITH_FILTER_LIMIT) {
+                if (filter_callback_remaining != nullptr && *filter_callback_remaining == 0) {
+                    return true;
+                }
+            }
+            if (heap_filled) {
+                break;
+            }
+        }
+    }
+    for (; pos < candidate_ids.size(); ++pos) {
+        const auto id = candidate_ids[pos];
+        ++(*heap_candidate_visit_count);
+        insert_candidate_into_heap<mode, type>(id,
+                                               dists[id],
+                                               cur_heap_top,
+                                               heap,
+                                               offset_id,
+                                               n_candidate,
+                                               radius,
+                                               filter,
+                                               param.distance_threshold,
+                                               param.enable_reorder,
+                                               param.reasoning_ctx);
+        if constexpr (type == InnerSearchType::WITH_FILTER_LIMIT) {
+            if (filter_callback_remaining != nullptr && *filter_callback_remaining == 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+template <typename IOTmpl>
+template <InnerSearchMode mode, InnerSearchType type>
+bool
 DiskSindiTermDataCell<IOTmpl>::InsertHeapByWindow(float* dists,
                                                   uint32_t window_id,
                                                   const SparseTermComputerPtr& computer,

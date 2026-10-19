@@ -124,13 +124,38 @@ struct SindiQueryContext {
     explicit SindiQueryContext(Allocator* allocator)
         : query_term_buffers(allocator),
           mapped_query_terms(allocator),
+          candidate_ids(allocator),
           candidate_tracker(allocator) {
+    }
+
+    void
+    BeginCandidateCollection(uint32_t capacity) {
+        candidate_ids.clear();
+        candidate_tracker.BeginWindow(capacity);
+    }
+
+    void
+    RecordPostingVisits(const uint16_t* ids, uint32_t count, bool collect_candidates) {
+        query_posting_visit_count += count;
+        if (not collect_candidates) {
+            return;
+        }
+        for (uint32_t i = 0; i < count; ++i) {
+            if (candidate_tracker.MarkOne(ids[i])) {
+                candidate_ids.push_back(ids[i]);
+                ++unique_candidate_count;
+            }
+        }
     }
 
     QueryTermBuffers query_term_buffers;
     MappedQueryTerms mapped_query_terms;
+    Vector<uint16_t> candidate_ids;
     bool has_untracked_approximate_evaluations{false};
     mutable SparseEvaluationTracker candidate_tracker;
+    uint64_t query_posting_visit_count{0};
+    uint64_t unique_candidate_count{0};
+    mutable uint64_t heap_candidate_visit_count{0};
 };
 
 /**

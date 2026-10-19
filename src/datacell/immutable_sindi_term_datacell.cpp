@@ -351,6 +351,9 @@ ImmutableSindiTermDataCell::QueryWindow(float* dists,
                                         SindiQueryContext& query_context) const {
     CHECK_ARGUMENT(window_id < windows_.size(), "immutable SINDI window id out of range");
     const auto& window = windows_[window_id];
+    if (use_term_lists_heap_insert) {
+        query_context.BeginCandidateCollection(window_size_);
+    }
     auto& mapped_terms = query_context.mapped_query_terms;
     this->map_query_terms(window, computer, mapped_terms);
     for (uint32_t pos = 0; pos < mapped_terms.size(); ++pos) {
@@ -370,6 +373,7 @@ ImmutableSindiTermDataCell::QueryWindow(float* dists,
         const auto* ids = window.id_payloads.data() + begin;
         const auto* values =
             window.value_payloads.data() + static_cast<uint64_t>(begin) * value_code_size_;
+        query_context.RecordPostingVisits(ids, count, use_term_lists_heap_insert);
         if (sparse_value_quant_type_ == SparseValueQuantizationType::SQ8) {
             computer->ScanForAccumulateSQ8(query_term, ids, values, count, dists);
         } else if (sparse_value_quant_type_ == SparseValueQuantizationType::FP16) {
@@ -463,6 +467,76 @@ ImmutableSindiTermDataCell::insert_heap_by_terms(float* dists,
 
 template <InnerSearchMode mode, InnerSearchType type>
 bool
+ImmutableSindiTermDataCell::insert_heap_by_candidates(
+    float* dists,
+    const Vector<uint16_t>& candidate_ids,
+    MaxHeap& heap,
+    const InnerSearchParam& param,
+    uint32_t offset_id,
+    uint64_t* heap_candidate_visit_count,
+    const uint64_t* filter_callback_remaining) const {
+    const auto n_candidate = static_cast<uint32_t>(param.ef);
+    const auto radius = param.radius;
+    const auto range_search_limit_size = param.range_search_limit_size;
+    const auto& filter = param.is_inner_id_allowed;
+    float heap_top =
+        mode == InnerSearchMode::RANGE_SEARCH ? radius - 1 : std::numeric_limits<float>::max();
+    if constexpr (mode == InnerSearchMode::KNN_SEARCH) {
+        if (heap.size() == n_candidate) {
+            heap_top = heap.top().first;
+        }
+    }
+    uint64_t pos = 0;
+    if constexpr (mode == InnerSearchMode::KNN_SEARCH) {
+        while (pos < candidate_ids.size() && heap.size() < n_candidate) {
+            const auto id = candidate_ids[pos++];
+            ++(*heap_candidate_visit_count);
+            const bool heap_filled = fill_initial<type>(id,
+                                                        dists[id],
+                                                        heap_top,
+                                                        heap,
+                                                        offset_id,
+                                                        n_candidate,
+                                                        filter,
+                                                        param.distance_threshold,
+                                                        param.enable_reorder,
+                                                        param.reasoning_ctx);
+            if constexpr (type == InnerSearchType::WITH_FILTER_LIMIT) {
+                if (filter_callback_remaining != nullptr && *filter_callback_remaining == 0) {
+                    return true;
+                }
+            }
+            if (heap_filled) {
+                break;
+            }
+        }
+    }
+    for (; pos < candidate_ids.size(); ++pos) {
+        const auto id = candidate_ids[pos];
+        ++(*heap_candidate_visit_count);
+        insert_candidate<mode, type>(id,
+                                     dists[id],
+                                     heap_top,
+                                     heap,
+                                     offset_id,
+                                     n_candidate,
+                                     radius,
+                                     range_search_limit_size,
+                                     filter,
+                                     param.distance_threshold,
+                                     param.enable_reorder,
+                                     param.reasoning_ctx);
+        if constexpr (type == InnerSearchType::WITH_FILTER_LIMIT) {
+            if (filter_callback_remaining != nullptr && *filter_callback_remaining == 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+template <InnerSearchMode mode, InnerSearchType type>
+bool
 ImmutableSindiTermDataCell::insert_heap_by_dists(float* dists,
                                                  uint32_t dists_size,
                                                  MaxHeap& heap,
@@ -539,55 +613,47 @@ ImmutableSindiTermDataCell::InsertHeapByWindow(float* dists,
                                                const SindiQueryContext& query_context,
                                                const uint64_t* filter_callback_remaining) const {
     CHECK_ARGUMENT(window_id < windows_.size(), "immutable SINDI window id out of range");
-    const auto& window = windows_[window_id];
-    const auto& mapped_terms = query_context.mapped_query_terms;
-    SparseEvaluationTracker* candidate_tracker = nullptr;
-    if (mode == InnerSearchMode::RANGE_SEARCH) {
-        query_context.candidate_tracker.BeginWindow(window_size_);
-        candidate_tracker = &query_context.candidate_tracker;
-    }
+    (void)computer;
+    const auto& candidate_ids = query_context.candidate_ids;
+    auto* heap_candidate_visit_count = &query_context.heap_candidate_visit_count;
     if (mode == InnerSearchMode::KNN_SEARCH && with_filter) {
         if (filter_callback_remaining != nullptr) {
-            return this->insert_heap_by_terms<InnerSearchMode::KNN_SEARCH,
-                                              InnerSearchType::WITH_FILTER_LIMIT>(
+            return this->insert_heap_by_candidates<InnerSearchMode::KNN_SEARCH,
+                                                   InnerSearchType::WITH_FILTER_LIMIT>(
                 dists,
-                window,
-                computer,
-                mapped_terms,
+                candidate_ids,
                 heap,
                 param,
                 offset_id,
-                nullptr,
+                heap_candidate_visit_count,
                 filter_callback_remaining);
         }
-        return this
-            ->insert_heap_by_terms<InnerSearchMode::KNN_SEARCH, InnerSearchType::WITH_FILTER>(
-                dists, window, computer, mapped_terms, heap, param, offset_id);
+        return this->insert_heap_by_candidates<InnerSearchMode::KNN_SEARCH,
+                                               InnerSearchType::WITH_FILTER>(
+            dists, candidate_ids, heap, param, offset_id, heap_candidate_visit_count);
     }
     if (mode == InnerSearchMode::KNN_SEARCH) {
-        return this->insert_heap_by_terms<InnerSearchMode::KNN_SEARCH, InnerSearchType::PURE>(
-            dists, window, computer, mapped_terms, heap, param, offset_id);
+        return this->insert_heap_by_candidates<InnerSearchMode::KNN_SEARCH, InnerSearchType::PURE>(
+            dists, candidate_ids, heap, param, offset_id, heap_candidate_visit_count);
     }
     if (with_filter) {
         if (filter_callback_remaining != nullptr) {
-            return this->insert_heap_by_terms<InnerSearchMode::RANGE_SEARCH,
-                                              InnerSearchType::WITH_FILTER_LIMIT>(
+            return this->insert_heap_by_candidates<InnerSearchMode::RANGE_SEARCH,
+                                                   InnerSearchType::WITH_FILTER_LIMIT>(
                 dists,
-                window,
-                computer,
-                mapped_terms,
+                candidate_ids,
                 heap,
                 param,
                 offset_id,
-                candidate_tracker,
+                heap_candidate_visit_count,
                 filter_callback_remaining);
         }
-        return this
-            ->insert_heap_by_terms<InnerSearchMode::RANGE_SEARCH, InnerSearchType::WITH_FILTER>(
-                dists, window, computer, mapped_terms, heap, param, offset_id, candidate_tracker);
+        return this->insert_heap_by_candidates<InnerSearchMode::RANGE_SEARCH,
+                                               InnerSearchType::WITH_FILTER>(
+            dists, candidate_ids, heap, param, offset_id, heap_candidate_visit_count);
     }
-    return this->insert_heap_by_terms<InnerSearchMode::RANGE_SEARCH, InnerSearchType::PURE>(
-        dists, window, computer, mapped_terms, heap, param, offset_id, candidate_tracker);
+    return this->insert_heap_by_candidates<InnerSearchMode::RANGE_SEARCH, InnerSearchType::PURE>(
+        dists, candidate_ids, heap, param, offset_id, heap_candidate_visit_count);
 }
 
 bool

@@ -66,6 +66,47 @@ ElapsedMicros(const std::chrono::steady_clock::time_point& begin) {
             std::chrono::steady_clock::now() - begin)
             .count());
 }
+
+class SindiCountingFilter final : public Filter {
+public:
+    SindiCountingFilter(FilterPtr filter, uint64_t* call_count, uint64_t* reject_count)
+        : filter_(std::move(filter)), call_count_(call_count), reject_count_(reject_count) {
+    }
+
+    [[nodiscard]] bool
+    CheckValid(int64_t id) const override {
+        ++(*call_count_);
+        const bool valid = filter_->CheckValid(id);
+        *reject_count_ += static_cast<uint64_t>(not valid);
+        return valid;
+    }
+
+    [[nodiscard]] float
+    ValidRatio() const override {
+        return filter_->ValidRatio();
+    }
+
+    [[nodiscard]] Distribution
+    FilterDistribution() const override {
+        return filter_->FilterDistribution();
+    }
+
+    void
+    GetValidIds(const int64_t** valid_ids, int64_t& count) const override {
+        filter_->GetValidIds(valid_ids, count);
+    }
+
+    [[nodiscard]] const uint8_t*
+    GetValidBitmap(uint64_t* size) const override {
+        return filter_->GetValidBitmap(size);
+    }
+
+private:
+    FilterPtr filter_;
+    uint64_t* call_count_;
+    uint64_t* reject_count_;
+};
+
 bool
 has_sorted_posting_lists(const JsonType& basic_info) {
     return basic_info.Contains(SINDI_POSTING_LIST_FORMAT_VERSION_KEY) and
@@ -845,7 +886,16 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
     uint64_t rerank_time_us = 0;
     uint64_t window_count = 0;
     uint64_t rerank_candidate_count = 0;
+    uint64_t filter_call_count = 0;
+    uint64_t filter_reject_count = 0;
     bool filter_limit_reached = false;
+    auto* search_allocator = allocator != nullptr ? allocator : allocator_;
+    SindiQueryContext query_context(search_allocator);
+    InnerSearchParam profiled_inner_param = inner_param;
+    if (profiled_inner_param.is_inner_id_allowed != nullptr) {
+        profiled_inner_param.is_inner_id_allowed = std::make_shared<SindiCountingFilter>(
+            profiled_inner_param.is_inner_id_allowed, &filter_call_count, &filter_reject_count);
+    }
     const auto publish_sindi_statistics = [&]() {
         if (statistics == nullptr) {
             return;
@@ -860,12 +910,21 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
         statistics->sindi_window_count.fetch_add(window_count, std::memory_order_relaxed);
         statistics->sindi_rerank_candidate_count.fetch_add(
             rerank_candidate_count, std::memory_order_relaxed);
+        statistics->sindi_query_posting_visit_count.fetch_add(
+            query_context.query_posting_visit_count, std::memory_order_relaxed);
+        statistics->sindi_unique_candidate_count.fetch_add(
+            query_context.unique_candidate_count, std::memory_order_relaxed);
+        statistics->sindi_heap_candidate_visit_count.fetch_add(
+            query_context.heap_candidate_visit_count, std::memory_order_relaxed);
+        statistics->sindi_filter_call_count.fetch_add(filter_call_count,
+                                                      std::memory_order_relaxed);
+        statistics->sindi_filter_reject_count.fetch_add(filter_reject_count,
+                                                        std::memory_order_relaxed);
         statistics->sindi_term_list_heap_insert_enabled.store(
             use_term_lists_heap_insert, std::memory_order_relaxed);
         statistics->sindi_filter_limit_reached.store(
             filter_limit_reached, std::memory_order_relaxed);
     };
-    auto* search_allocator = allocator != nullptr ? allocator : allocator_;
     // computer and heap
     MaxHeap heap(search_allocator);
     int64_t k = 0;
@@ -883,7 +942,6 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
     auto selected_buckets = reasoning_ctx != nullptr
                                 ? std::make_unique<Vector<BucketIdType>>(search_allocator)
                                 : nullptr;
-    SindiQueryContext query_context(search_allocator);
     for (auto cur = min_window_id; cur <= max_window_id; ++cur) {
         cur = metadata_filter_.NextMatchingWindow(metadata_route, window_size_, cur, max_window_id);
         if (cur > max_window_id) {
@@ -925,7 +983,7 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
                                                    window_id,
                                                    computer,
                                                    heap,
-                                                   inner_param,
+                                                   profiled_inner_param,
                                                    window_start_id,
                                                    mode,
                                                    inner_param.is_inner_id_allowed != nullptr,
@@ -940,7 +998,7 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
                 term_datacell_->InsertHeapByDists(dists.data(),
                                                   window_document_count,
                                                   heap,
-                                                  inner_param,
+                                                  profiled_inner_param,
                                                   window_start_id,
                                                   mode,
                                                   inner_param.is_inner_id_allowed != nullptr,

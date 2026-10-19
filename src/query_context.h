@@ -206,6 +206,18 @@ public:
         j["sindi_window_count"].SetUint64(sindi_window_count.load(std::memory_order_relaxed));
         j["sindi_rerank_candidate_count"].SetUint64(
             sindi_rerank_candidate_count.load(std::memory_order_relaxed));
+        j["sindi_query_posting_visit_count"].SetUint64(
+            sindi_query_posting_visit_count.load(std::memory_order_relaxed));
+        j["sindi_heap_posting_visit_count"].SetUint64(
+            sindi_heap_posting_visit_count.load(std::memory_order_relaxed));
+        j["sindi_unique_candidate_count"].SetUint64(
+            sindi_unique_candidate_count.load(std::memory_order_relaxed));
+        j["sindi_heap_candidate_visit_count"].SetUint64(
+            sindi_heap_candidate_visit_count.load(std::memory_order_relaxed));
+        j["sindi_filter_call_count"].SetUint64(
+            sindi_filter_call_count.load(std::memory_order_relaxed));
+        j["sindi_filter_reject_count"].SetUint64(
+            sindi_filter_reject_count.load(std::memory_order_relaxed));
         j["sindi_term_list_heap_insert_enabled"].SetBool(
             sindi_term_list_heap_insert_enabled.load(std::memory_order_relaxed));
         j["sindi_filter_limit_reached"].SetBool(
@@ -253,6 +265,12 @@ public:
     std::atomic<uint64_t> sindi_rerank_time_us{0};
     std::atomic<uint64_t> sindi_window_count{0};
     std::atomic<uint64_t> sindi_rerank_candidate_count{0};
+    std::atomic<uint64_t> sindi_query_posting_visit_count{0};
+    std::atomic<uint64_t> sindi_heap_posting_visit_count{0};
+    std::atomic<uint64_t> sindi_unique_candidate_count{0};
+    std::atomic<uint64_t> sindi_heap_candidate_visit_count{0};
+    std::atomic<uint64_t> sindi_filter_call_count{0};
+    std::atomic<uint64_t> sindi_filter_reject_count{0};
     std::atomic<bool> sindi_term_list_heap_insert_enabled{false};
     std::atomic<bool> sindi_filter_limit_reached{false};
     std::atomic<uint64_t> distance_evaluations{0};
@@ -323,6 +341,18 @@ public:
         result.sindi_window_count = base.sindi_window_count.load(std::memory_order_relaxed);
         result.sindi_rerank_candidate_count =
             base.sindi_rerank_candidate_count.load(std::memory_order_relaxed);
+        result.sindi_query_posting_visit_count =
+            base.sindi_query_posting_visit_count.load(std::memory_order_relaxed);
+        result.sindi_heap_posting_visit_count =
+            base.sindi_heap_posting_visit_count.load(std::memory_order_relaxed);
+        result.sindi_unique_candidate_count =
+            base.sindi_unique_candidate_count.load(std::memory_order_relaxed);
+        result.sindi_heap_candidate_visit_count =
+            base.sindi_heap_candidate_visit_count.load(std::memory_order_relaxed);
+        result.sindi_filter_call_count =
+            base.sindi_filter_call_count.load(std::memory_order_relaxed);
+        result.sindi_filter_reject_count =
+            base.sindi_filter_reject_count.load(std::memory_order_relaxed);
         result.sindi_term_list_heap_insert_enabled =
             base.sindi_term_list_heap_insert_enabled.load(std::memory_order_relaxed);
         result.sindi_filter_limit_reached =

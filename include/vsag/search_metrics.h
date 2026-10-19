@@ -122,6 +122,12 @@ struct SearchResultMetrics {
     uint64_t sindi_rerank_time_us{0};
     uint64_t sindi_window_count{0};
     uint64_t sindi_rerank_candidate_count{0};
+    uint64_t sindi_query_posting_visit_count{0};
+    uint64_t sindi_heap_posting_visit_count{0};
+    uint64_t sindi_unique_candidate_count{0};
+    uint64_t sindi_heap_candidate_visit_count{0};
+    uint64_t sindi_filter_call_count{0};
+    uint64_t sindi_filter_reject_count{0};
     bool sindi_term_list_heap_insert_enabled{false};
     bool sindi_filter_limit_reached{false};
     uint64_t distance_evaluations{0};

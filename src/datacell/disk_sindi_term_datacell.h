@@ -167,6 +167,16 @@ private:
 
     template <InnerSearchMode mode, InnerSearchType type>
     bool
+    InsertHeapByCandidates(float* dists,
+                           const Vector<uint16_t>& candidate_ids,
+                           MaxHeap& heap,
+                           const InnerSearchParam& param,
+                           uint32_t offset_id,
+                           uint64_t* heap_candidate_visit_count,
+                           const uint64_t* filter_callback_remaining = nullptr) const;
+
+    template <InnerSearchMode mode, InnerSearchType type>
+    bool
     InsertHeapByWindow(float* dists,
                        uint32_t window_id,
                        const SparseTermComputerPtr& computer,

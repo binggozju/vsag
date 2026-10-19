@@ -470,37 +470,50 @@ DiskSindiTermDataCell<IOTmpl>::InsertHeapByWindow(float* dists,
                                                   bool with_filter,
                                                   const SindiQueryContext& query_context,
                                                   const uint64_t* filter_callback_remaining) const {
-    const auto& query_term_buffers = query_context.query_term_buffers;
+    (void)window_id;
+    (void)computer;
+    const auto& candidate_ids = query_context.candidate_ids;
+    auto* heap_candidate_visit_count = &query_context.heap_candidate_visit_count;
     if (mode == InnerSearchMode::KNN_SEARCH) {
-        return this->InsertHeapByWindowKnn(dists,
-                                           window_id,
-                                           computer,
-                                           heap,
-                                           param,
-                                           offset_id,
-                                           with_filter,
-                                           query_term_buffers,
-                                           filter_callback_remaining);
+        if (with_filter) {
+            if (filter_callback_remaining != nullptr) {
+                return this->template InsertHeapByCandidates<
+                    InnerSearchMode::KNN_SEARCH, InnerSearchType::WITH_FILTER_LIMIT>(
+                    dists,
+                    candidate_ids,
+                    heap,
+                    param,
+                    offset_id,
+                    heap_candidate_visit_count,
+                    filter_callback_remaining);
+            }
+            return this->template InsertHeapByCandidates<InnerSearchMode::KNN_SEARCH,
+                                                         InnerSearchType::WITH_FILTER>(
+                dists, candidate_ids, heap, param, offset_id, heap_candidate_visit_count);
+        }
+        return this->template InsertHeapByCandidates<InnerSearchMode::KNN_SEARCH,
+                                                     InnerSearchType::PURE>(
+            dists, candidate_ids, heap, param, offset_id, heap_candidate_visit_count);
     }
     if (with_filter) {
         if (filter_callback_remaining != nullptr) {
-            return this->template InsertHeapByWindow<InnerSearchMode::RANGE_SEARCH,
-                                                     InnerSearchType::WITH_FILTER_LIMIT>(
+            return this->template InsertHeapByCandidates<
+                InnerSearchMode::RANGE_SEARCH, InnerSearchType::WITH_FILTER_LIMIT>(
                 dists,
-                window_id,
-                computer,
+                candidate_ids,
                 heap,
                 param,
                 offset_id,
-                query_term_buffers,
+                heap_candidate_visit_count,
                 filter_callback_remaining);
         }
-        return this->template InsertHeapByWindow<InnerSearchMode::RANGE_SEARCH,
-                                                 InnerSearchType::WITH_FILTER>(
-            dists, window_id, computer, heap, param, offset_id, query_term_buffers);
+        return this->template InsertHeapByCandidates<InnerSearchMode::RANGE_SEARCH,
+                                                     InnerSearchType::WITH_FILTER>(
+            dists, candidate_ids, heap, param, offset_id, heap_candidate_visit_count);
     }
-    return this->template InsertHeapByWindow<InnerSearchMode::RANGE_SEARCH, InnerSearchType::PURE>(
-        dists, window_id, computer, heap, param, offset_id, query_term_buffers);
+    return this->template InsertHeapByCandidates<InnerSearchMode::RANGE_SEARCH,
+                                                 InnerSearchType::PURE>(
+        dists, candidate_ids, heap, param, offset_id, heap_candidate_visit_count);
 }
 
 template <typename IOTmpl>
@@ -558,8 +571,10 @@ DiskSindiTermDataCell<IOTmpl>::QueryWindow(float* dists,
                                            const SparseTermComputerPtr& computer,
                                            bool use_term_lists_heap_insert,
                                            SindiQueryContext& query_context) const {
-    (void)use_term_lists_heap_insert;
     const auto& query_term_buffers = query_context.query_term_buffers;
+    if (use_term_lists_heap_insert) {
+        query_context.BeginCandidateCollection(window_size_);
+    }
     std::shared_lock lock(term_layout_mutex_);
     while (computer->HasNextTerm()) {
         auto it = computer->NextTermIter();
@@ -577,6 +592,9 @@ DiskSindiTermDataCell<IOTmpl>::QueryWindow(float* dists,
             continue;
         }
         query_context.has_untracked_approximate_evaluations = true;
+
+        query_context.RecordPostingVisits(
+            tb->IdsData() + start, count, use_term_lists_heap_insert);
 
         if (sparse_value_quant_type_ == SparseValueQuantizationType::SQ8) {
             computer->ScanForAccumulateSQ8(

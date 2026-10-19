@@ -79,6 +79,20 @@ MetricsSchema::Base() {
         {"sindi_rerank_candidate_count",
          "SINDI rerank candidate count",
          MetricValueType::UINT64},
+        {"sindi_query_posting_visit_count",
+         "SINDI QueryWindow posting visit count",
+         MetricValueType::UINT64},
+        {"sindi_heap_posting_visit_count",
+         "SINDI heap posting revisit count",
+         MetricValueType::UINT64},
+        {"sindi_unique_candidate_count",
+         "SINDI unique window candidate count",
+         MetricValueType::UINT64},
+        {"sindi_heap_candidate_visit_count",
+         "SINDI heap candidate visit count",
+         MetricValueType::UINT64},
+        {"sindi_filter_call_count", "SINDI filter callback count", MetricValueType::UINT64},
+        {"sindi_filter_reject_count", "SINDI filter rejection count", MetricValueType::UINT64},
         {"sindi_term_list_heap_insert_enabled",
          "Whether SINDI enabled term-list heap insertion",
          MetricValueType::BOOL},
@@ -123,6 +137,12 @@ SearchResultMetrics::Dump() const {
     json["sindi_rerank_time"].SetUint64(sindi_rerank_time_us);
     json["sindi_window_count"].SetUint64(sindi_window_count);
     json["sindi_rerank_candidate_count"].SetUint64(sindi_rerank_candidate_count);
+    json["sindi_query_posting_visit_count"].SetUint64(sindi_query_posting_visit_count);
+    json["sindi_heap_posting_visit_count"].SetUint64(sindi_heap_posting_visit_count);
+    json["sindi_unique_candidate_count"].SetUint64(sindi_unique_candidate_count);
+    json["sindi_heap_candidate_visit_count"].SetUint64(sindi_heap_candidate_visit_count);
+    json["sindi_filter_call_count"].SetUint64(sindi_filter_call_count);
+    json["sindi_filter_reject_count"].SetUint64(sindi_filter_reject_count);
     json["sindi_term_list_heap_insert_enabled"].SetBool(
         sindi_term_list_heap_insert_enabled);
     json["sindi_filter_limit_reached"].SetBool(sindi_filter_limit_reached);
