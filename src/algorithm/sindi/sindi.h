@@ -197,7 +197,8 @@ private:
                 ReasoningContext* reasoning_ctx = nullptr,
                 SearchStatistics* statistics = nullptr,
                 const uint64_t* filter_callback_remaining = nullptr,
-                const SindiMetadataSearchRoute& metadata_route = {}) const;
+                const SindiMetadataSearchRoute& metadata_route = {},
+                uint64_t worker_n_candidate = 0) const;
 
     bool
     UseTermListsHeapInsert(const SINDISearchParameter& search_param,
