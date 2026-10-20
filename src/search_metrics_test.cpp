@@ -27,13 +27,46 @@ TEST_CASE("Search metrics snapshot preserves counters", "[ut][search_metrics]") 
     vsag::SearchMetrics metrics;
     metrics.base.AddDistance(
         vsag::DistanceEvaluationPhase::APPROXIMATE, vsag::DistanceEvaluationBackend::FP32, 7);
+    metrics.base.sindi_query_posting_visit_count.store(11, std::memory_order_relaxed);
+    metrics.base.sindi_heap_posting_visit_count.store(12, std::memory_order_relaxed);
+    metrics.base.sindi_unique_candidate_count.store(13, std::memory_order_relaxed);
+    metrics.base.sindi_heap_candidate_visit_count.store(14, std::memory_order_relaxed);
+    metrics.base.sindi_filter_call_count.store(15, std::memory_order_relaxed);
+    metrics.base.sindi_filter_reject_count.store(16, std::memory_order_relaxed);
     auto snapshot = std::move(metrics).Snapshot();
+    const auto json = vsag::JsonType::Parse(snapshot.Dump());
 
     CHECK(snapshot.distance_evaluations == 7);
     CHECK(snapshot.DistanceEvaluations(vsag::DistanceEvaluationPhase::APPROXIMATE) == 7);
     CHECK(snapshot.DistanceEvaluations(vsag::DistanceEvaluationBackend::FP32) == 7);
+    CHECK(snapshot.sindi_query_posting_visit_count == 11);
+    CHECK(snapshot.sindi_heap_posting_visit_count == 12);
+    CHECK(snapshot.sindi_unique_candidate_count == 13);
+    CHECK(snapshot.sindi_heap_candidate_visit_count == 14);
+    CHECK(snapshot.sindi_filter_call_count == 15);
+    CHECK(snapshot.sindi_filter_reject_count == 16);
+    CHECK(json["sindi_query_posting_visit_count"].GetUint64() == 11);
+    CHECK(json["sindi_heap_posting_visit_count"].GetUint64() == 12);
+    CHECK(json["sindi_unique_candidate_count"].GetUint64() == 13);
+    CHECK(json["sindi_heap_candidate_visit_count"].GetUint64() == 14);
+    CHECK(json["sindi_filter_call_count"].GetUint64() == 15);
+    CHECK(json["sindi_filter_reject_count"].GetUint64() == 16);
     CHECK(vsag::MetricsSchema::Base().Contains("distance_evaluations"));
-    CHECK(vsag::MetricsSchema::Base().Fields().size() == 19);
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_search_time"));
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_query_window_time"));
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_heap_insert_time"));
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_rerank_time"));
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_window_count"));
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_rerank_candidate_count"));
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_query_posting_visit_count"));
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_heap_posting_visit_count"));
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_unique_candidate_count"));
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_heap_candidate_visit_count"));
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_filter_call_count"));
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_filter_reject_count"));
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_term_list_heap_insert_enabled"));
+    CHECK(vsag::MetricsSchema::Base().Contains("sindi_filter_limit_reached"));
+    CHECK(vsag::MetricsSchema::Base().Fields().size() == 33);
     CHECK(std::string(vsag::DistanceEvaluationPhaseName(
               static_cast<vsag::DistanceEvaluationPhase>(255))) == "unknown");
     CHECK(std::string(vsag::DistanceEvaluationBackendName(

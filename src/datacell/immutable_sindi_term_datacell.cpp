@@ -351,6 +351,8 @@ ImmutableSindiTermDataCell::QueryWindow(float* dists,
                                         SindiQueryContext& query_context) const {
     CHECK_ARGUMENT(window_id < windows_.size(), "immutable SINDI window id out of range");
     const auto& window = windows_[window_id];
+    (void)use_term_lists_heap_insert;
+    query_context.BeginQueryWindow();
     auto& mapped_terms = query_context.mapped_query_terms;
     this->map_query_terms(window, computer, mapped_terms);
     for (uint32_t pos = 0; pos < mapped_terms.size(); ++pos) {
@@ -370,6 +372,7 @@ ImmutableSindiTermDataCell::QueryWindow(float* dists,
         const auto* ids = window.id_payloads.data() + begin;
         const auto* values =
             window.value_payloads.data() + static_cast<uint64_t>(begin) * value_code_size_;
+        query_context.RecordQueryPostingVisits(count);
         if (sparse_value_quant_type_ == SparseValueQuantizationType::SQ8) {
             computer->ScanForAccumulateSQ8(query_term, ids, values, count, dists);
         } else if (sparse_value_quant_type_ == SparseValueQuantizationType::FP16) {
@@ -562,11 +565,25 @@ ImmutableSindiTermDataCell::InsertHeapByWindow(float* dists,
         }
         return this
             ->insert_heap_by_terms<InnerSearchMode::KNN_SEARCH, InnerSearchType::WITH_FILTER>(
-                dists, window, computer, mapped_terms, heap, param, offset_id);
+                dists,
+                window,
+                computer,
+                mapped_terms,
+                heap,
+                param,
+                offset_id,
+                nullptr);
     }
     if (mode == InnerSearchMode::KNN_SEARCH) {
         return this->insert_heap_by_terms<InnerSearchMode::KNN_SEARCH, InnerSearchType::PURE>(
-            dists, window, computer, mapped_terms, heap, param, offset_id);
+            dists,
+            window,
+            computer,
+            mapped_terms,
+            heap,
+            param,
+            offset_id,
+            nullptr);
     }
     if (with_filter) {
         if (filter_callback_remaining != nullptr) {
@@ -584,10 +601,24 @@ ImmutableSindiTermDataCell::InsertHeapByWindow(float* dists,
         }
         return this
             ->insert_heap_by_terms<InnerSearchMode::RANGE_SEARCH, InnerSearchType::WITH_FILTER>(
-                dists, window, computer, mapped_terms, heap, param, offset_id, candidate_tracker);
+                dists,
+                window,
+                computer,
+                mapped_terms,
+                heap,
+                param,
+                offset_id,
+                candidate_tracker);
     }
     return this->insert_heap_by_terms<InnerSearchMode::RANGE_SEARCH, InnerSearchType::PURE>(
-        dists, window, computer, mapped_terms, heap, param, offset_id, candidate_tracker);
+        dists,
+        window,
+        computer,
+        mapped_terms,
+        heap,
+        param,
+        offset_id,
+        candidate_tracker);
 }
 
 bool

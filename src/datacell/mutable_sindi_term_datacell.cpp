@@ -245,6 +245,7 @@ MutableSindiTermDataCell::QueryWindow(float* dists,
     (void)use_term_lists_heap_insert;
     CHECK_ARGUMENT(window_id < windows_.size(), "mutable SINDI window id out of range");
     const auto& window = windows_[window_id];
+    query_context.BeginQueryWindow();
     while (computer->HasNextTerm()) {
         auto it = computer->NextTermIter();
         auto term = computer->GetTerm(it);
@@ -263,6 +264,7 @@ MutableSindiTermDataCell::QueryWindow(float* dists,
         const auto posting_count = window.term_sizes_[term];
         const auto term_size = computer->GetTermScanCount(posting_count);
         query_context.has_untracked_approximate_evaluations |= term_size > 0;
+        query_context.RecordQueryPostingVisits(term_size);
 
         if (sparse_value_quant_type_ == SparseValueQuantizationType::SQ8) {
             computer->ScanForAccumulateSQ8(it,

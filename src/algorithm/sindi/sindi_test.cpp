@@ -286,11 +286,17 @@ TEST_CASE("SINDI Filter Callback Limit", "[ut][SINDI]") {
     REQUIRE(limited_result->GetDim() == 1);
     REQUIRE(limited_result->GetIds()[0] == 2);
     REQUIRE(limited_filter->WouldAccept(limited_result->GetIds()[0]));
+    const auto limited_statistics = JsonType::Parse(limited_result->GetStatistics());
+    REQUIRE(limited_statistics["sindi_filter_call_count"].GetUint64() == 3);
+    REQUIRE(limited_statistics["sindi_filter_reject_count"].GetUint64() == 2);
 
     auto rejecting_filter = std::make_shared<CountingFilter>(-1);
     auto rejected_result = search(limited_parameters, rejecting_filter);
     REQUIRE(rejecting_filter->Count() == 3);
     REQUIRE(rejected_result->GetDim() == 0);
+    const auto rejected_statistics = JsonType::Parse(rejected_result->GetStatistics());
+    REQUIRE(rejected_statistics["sindi_filter_call_count"].GetUint64() == 3);
+    REQUIRE(rejected_statistics["sindi_filter_reject_count"].GetUint64() == 3);
 
     const auto unlimited_parameters = fmt::format(
         R"({{"sindi": {{"n_candidate": 4, "query_prune_ratio": {}, "filter_callback_limit": 0}}}})",
@@ -1099,6 +1105,13 @@ TEST_CASE("SINDI range search ignores repeated zero-distance candidates", "[ut][
     auto result = index.RangeSearch(query, 1.0F, search_params, nullptr);
 
     REQUIRE(result->GetDim() == 3);
+    const auto statistics = JsonType::Parse(result->GetStatistics());
+    REQUIRE(statistics["sindi_query_posting_visit_count"].GetUint64() == 4);
+    REQUIRE(statistics["sindi_heap_posting_visit_count"].GetUint64() == 4);
+    REQUIRE(statistics["sindi_unique_candidate_count"].GetUint64() == 0);
+    REQUIRE(statistics["sindi_heap_candidate_visit_count"].GetUint64() == 0);
+    REQUIRE(statistics["sindi_filter_call_count"].GetUint64() == 0);
+    REQUIRE(statistics["sindi_filter_reject_count"].GetUint64() == 0);
     const std::map<int64_t, float> expected_results =
         use_reorder ? std::map<int64_t, float>{{1, -0.25F}, {2, 0.79F}, {3, 0.68F}}
                     : std::map<int64_t, float>{{1, 0.0F}, {2, 0.94F}, {3, 0.68F}};
@@ -1111,6 +1124,14 @@ TEST_CASE("SINDI range search ignores repeated zero-distance candidates", "[ut][
         result_ids.insert(id);
     }
     REQUIRE(result_ids == std::set<int64_t>{1, 2, 3});
+
+    auto knn_result = index.KnnSearch(query, 3, search_params, nullptr);
+    REQUIRE(knn_result->GetDim() == 3);
+    const auto knn_statistics = JsonType::Parse(knn_result->GetStatistics());
+    REQUIRE(knn_statistics["sindi_query_posting_visit_count"].GetUint64() == 4);
+    REQUIRE(knn_statistics["sindi_heap_posting_visit_count"].GetUint64() == 4);
+    REQUIRE(knn_statistics["sindi_unique_candidate_count"].GetUint64() == 0);
+    REQUIRE(knn_statistics["sindi_heap_candidate_visit_count"].GetUint64() == 4);
 }
 
 TEST_CASE("SINDI Quantization Test", "[ut][SINDI]") {

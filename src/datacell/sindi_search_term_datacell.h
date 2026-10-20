@@ -127,10 +127,26 @@ struct SindiQueryContext {
           candidate_tracker(allocator) {
     }
 
+    void
+    BeginQueryWindow() {
+        current_window_query_posting_visit_count = 0;
+    }
+
+    void
+    RecordQueryPostingVisits(uint32_t count) {
+        query_posting_visit_count += count;
+        current_window_query_posting_visit_count += count;
+    }
+
     QueryTermBuffers query_term_buffers;
     MappedQueryTerms mapped_query_terms;
     bool has_untracked_approximate_evaluations{false};
     mutable SparseEvaluationTracker candidate_tracker;
+    uint64_t query_posting_visit_count{0};
+    uint64_t current_window_query_posting_visit_count{0};
+    mutable uint64_t heap_posting_visit_count{0};
+    uint64_t unique_candidate_count{0};
+    mutable uint64_t heap_candidate_visit_count{0};
 };
 
 /**

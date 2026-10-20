@@ -346,6 +346,11 @@ TEST_CASE("DiskSindiTermDataCell applies term prune without term-list heap inser
     REQUIRE(distances[3] == 0.0F);
 
     distances.fill(0.0F);
+    restored->QueryWindow(distances.data(), 0, computer, true, query_context);
+    REQUIRE(query_context.query_posting_visit_count == 2);
+    REQUIRE(query_context.unique_candidate_count == 0);
+
+    distances.fill(0.0F);
     restored->QueryWindow(distances.data(), 1, computer, false, query_context);
     REQUIRE(distances[0] == -4.0F);
     REQUIRE(distances[1] == 0.0F);

@@ -116,6 +116,20 @@ struct SearchResultMetrics {
     uint32_t rabitq_reorder_fallback_full_count{0};
     uint32_t query_computer_count{0};
     uint32_t parallel_search_fallback_count{0};
+    uint64_t sindi_search_time_us{0};
+    uint64_t sindi_query_window_time_us{0};
+    uint64_t sindi_heap_insert_time_us{0};
+    uint64_t sindi_rerank_time_us{0};
+    uint64_t sindi_window_count{0};
+    uint64_t sindi_rerank_candidate_count{0};
+    uint64_t sindi_query_posting_visit_count{0};
+    uint64_t sindi_heap_posting_visit_count{0};
+    uint64_t sindi_unique_candidate_count{0};
+    uint64_t sindi_heap_candidate_visit_count{0};
+    uint64_t sindi_filter_call_count{0};
+    uint64_t sindi_filter_reject_count{0};
+    bool sindi_term_list_heap_insert_enabled{false};
+    bool sindi_filter_limit_reached{false};
     uint64_t distance_evaluations{0};
     std::array<uint64_t, static_cast<uint8_t>(DistanceEvaluationPhase::COUNT)>
         distance_evaluations_by_phase{};
