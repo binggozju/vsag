@@ -912,6 +912,8 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
             rerank_candidate_count, std::memory_order_relaxed);
         statistics->sindi_query_posting_visit_count.fetch_add(
             query_context.query_posting_visit_count, std::memory_order_relaxed);
+        statistics->sindi_heap_posting_visit_count.fetch_add(
+            query_context.heap_posting_visit_count, std::memory_order_relaxed);
         statistics->sindi_unique_candidate_count.fetch_add(
             query_context.unique_candidate_count, std::memory_order_relaxed);
         statistics->sindi_heap_candidate_visit_count.fetch_add(
@@ -957,6 +959,14 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
             dists.data(), window_id, computer, use_term_lists_heap_insert, query_context);
         query_window_time_us += ElapsedMicros(query_window_begin);
         ++window_count;
+        if (use_term_lists_heap_insert) {
+            query_context.heap_posting_visit_count +=
+                query_context.current_window_query_posting_visit_count;
+            if constexpr (mode == KNN_SEARCH) {
+                query_context.heap_candidate_visit_count +=
+                    query_context.current_window_query_posting_visit_count;
+            }
+        }
 
         if (reasoning_ctx != nullptr) {
             selected_buckets->push_back(static_cast<BucketIdType>(cur));

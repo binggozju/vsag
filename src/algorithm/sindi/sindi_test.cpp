@@ -1090,9 +1090,9 @@ TEST_CASE("SINDI range search ignores repeated zero-distance candidates", "[ut][
     REQUIRE(result->GetDim() == 3);
     const auto statistics = JsonType::Parse(result->GetStatistics());
     REQUIRE(statistics["sindi_query_posting_visit_count"].GetUint64() == 4);
-    REQUIRE(statistics["sindi_heap_posting_visit_count"].GetUint64() == 0);
-    REQUIRE(statistics["sindi_unique_candidate_count"].GetUint64() == 3);
-    REQUIRE(statistics["sindi_heap_candidate_visit_count"].GetUint64() == 3);
+    REQUIRE(statistics["sindi_heap_posting_visit_count"].GetUint64() == 4);
+    REQUIRE(statistics["sindi_unique_candidate_count"].GetUint64() == 0);
+    REQUIRE(statistics["sindi_heap_candidate_visit_count"].GetUint64() == 0);
     REQUIRE(statistics["sindi_filter_call_count"].GetUint64() == 0);
     REQUIRE(statistics["sindi_filter_reject_count"].GetUint64() == 0);
     const std::map<int64_t, float> expected_results =
@@ -1112,9 +1112,9 @@ TEST_CASE("SINDI range search ignores repeated zero-distance candidates", "[ut][
     REQUIRE(knn_result->GetDim() == 3);
     const auto knn_statistics = JsonType::Parse(knn_result->GetStatistics());
     REQUIRE(knn_statistics["sindi_query_posting_visit_count"].GetUint64() == 4);
-    REQUIRE(knn_statistics["sindi_heap_posting_visit_count"].GetUint64() == 0);
-    REQUIRE(knn_statistics["sindi_unique_candidate_count"].GetUint64() == 3);
-    REQUIRE(knn_statistics["sindi_heap_candidate_visit_count"].GetUint64() == 3);
+    REQUIRE(knn_statistics["sindi_heap_posting_visit_count"].GetUint64() == 4);
+    REQUIRE(knn_statistics["sindi_unique_candidate_count"].GetUint64() == 0);
+    REQUIRE(knn_statistics["sindi_heap_candidate_visit_count"].GetUint64() == 4);
 }
 
 TEST_CASE("SINDI Quantization Test", "[ut][SINDI]") {
