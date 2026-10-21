@@ -218,6 +218,14 @@ public:
             sindi_filter_call_count.load(std::memory_order_relaxed));
         j["sindi_filter_reject_count"].SetUint64(
             sindi_filter_reject_count.load(std::memory_order_relaxed));
+        j["sindi_parallel_wall_time"].SetUint64(
+            sindi_parallel_wall_time_us.load(std::memory_order_relaxed));
+        j["sindi_parallel_worker_max_time"].SetUint64(
+            sindi_parallel_worker_max_time_us.load(std::memory_order_relaxed));
+        j["sindi_parallel_heap_merge_time"].SetUint64(
+            sindi_parallel_heap_merge_time_us.load(std::memory_order_relaxed));
+        j["sindi_parallel_worker_count"].SetUint64(
+            sindi_parallel_worker_count.load(std::memory_order_relaxed));
         j["sindi_term_list_heap_insert_enabled"].SetBool(
             sindi_term_list_heap_insert_enabled.load(std::memory_order_relaxed));
         j["sindi_filter_limit_reached"].SetBool(
@@ -271,6 +279,10 @@ public:
     std::atomic<uint64_t> sindi_heap_candidate_visit_count{0};
     std::atomic<uint64_t> sindi_filter_call_count{0};
     std::atomic<uint64_t> sindi_filter_reject_count{0};
+    std::atomic<uint64_t> sindi_parallel_wall_time_us{0};
+    std::atomic<uint64_t> sindi_parallel_worker_max_time_us{0};
+    std::atomic<uint64_t> sindi_parallel_heap_merge_time_us{0};
+    std::atomic<uint64_t> sindi_parallel_worker_count{0};
     std::atomic<bool> sindi_term_list_heap_insert_enabled{false};
     std::atomic<bool> sindi_filter_limit_reached{false};
     std::atomic<uint64_t> distance_evaluations{0};
@@ -353,6 +365,14 @@ public:
             base.sindi_filter_call_count.load(std::memory_order_relaxed);
         result.sindi_filter_reject_count =
             base.sindi_filter_reject_count.load(std::memory_order_relaxed);
+        result.sindi_parallel_wall_time_us =
+            base.sindi_parallel_wall_time_us.load(std::memory_order_relaxed);
+        result.sindi_parallel_worker_max_time_us =
+            base.sindi_parallel_worker_max_time_us.load(std::memory_order_relaxed);
+        result.sindi_parallel_heap_merge_time_us =
+            base.sindi_parallel_heap_merge_time_us.load(std::memory_order_relaxed);
+        result.sindi_parallel_worker_count =
+            base.sindi_parallel_worker_count.load(std::memory_order_relaxed);
         result.sindi_term_list_heap_insert_enabled =
             base.sindi_term_list_heap_insert_enabled.load(std::memory_order_relaxed);
         result.sindi_filter_limit_reached =

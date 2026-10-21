@@ -93,6 +93,10 @@ MetricsSchema::Base() {
          MetricValueType::UINT64},
         {"sindi_filter_call_count", "SINDI filter callback count", MetricValueType::UINT64},
         {"sindi_filter_reject_count", "SINDI filter rejection count", MetricValueType::UINT64},
+        {"sindi_parallel_wall_time", "SINDI parallel window wall time in microseconds", MetricValueType::UINT64},
+        {"sindi_parallel_worker_max_time", "SINDI maximum worker processing time in microseconds", MetricValueType::UINT64},
+        {"sindi_parallel_heap_merge_time", "SINDI local heap merge time in microseconds", MetricValueType::UINT64},
+        {"sindi_parallel_worker_count", "SINDI parallel worker count", MetricValueType::UINT64},
         {"sindi_term_list_heap_insert_enabled",
          "Whether SINDI enabled term-list heap insertion",
          MetricValueType::BOOL},
@@ -143,6 +147,10 @@ SearchResultMetrics::Dump() const {
     json["sindi_heap_candidate_visit_count"].SetUint64(sindi_heap_candidate_visit_count);
     json["sindi_filter_call_count"].SetUint64(sindi_filter_call_count);
     json["sindi_filter_reject_count"].SetUint64(sindi_filter_reject_count);
+    json["sindi_parallel_wall_time"].SetUint64(sindi_parallel_wall_time_us);
+    json["sindi_parallel_worker_max_time"].SetUint64(sindi_parallel_worker_max_time_us);
+    json["sindi_parallel_heap_merge_time"].SetUint64(sindi_parallel_heap_merge_time_us);
+    json["sindi_parallel_worker_count"].SetUint64(sindi_parallel_worker_count);
     json["sindi_term_list_heap_insert_enabled"].SetBool(
         sindi_term_list_heap_insert_enabled);
     json["sindi_filter_limit_reached"].SetBool(sindi_filter_limit_reached);

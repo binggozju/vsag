@@ -128,6 +128,10 @@ struct SearchResultMetrics {
     uint64_t sindi_heap_candidate_visit_count{0};
     uint64_t sindi_filter_call_count{0};
     uint64_t sindi_filter_reject_count{0};
+    uint64_t sindi_parallel_wall_time_us{0};
+    uint64_t sindi_parallel_worker_max_time_us{0};
+    uint64_t sindi_parallel_heap_merge_time_us{0};
+    uint64_t sindi_parallel_worker_count{0};
     bool sindi_term_list_heap_insert_enabled{false};
     bool sindi_filter_limit_reached{false};
     uint64_t distance_evaluations{0};

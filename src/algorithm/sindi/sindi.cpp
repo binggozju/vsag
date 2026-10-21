@@ -918,6 +918,10 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
     uint64_t rerank_candidate_count = 0;
     uint64_t filter_call_count = 0;
     uint64_t filter_reject_count = 0;
+    uint64_t parallel_wall_time_us = 0;
+    uint64_t parallel_worker_max_time_us = 0;
+    uint64_t parallel_heap_merge_time_us = 0;
+    uint64_t parallel_worker_count = 0;
     bool filter_limit_reached = false;
     InnerSearchParam profiled_inner_param = inner_param;
     if (statistics != nullptr and profiled_inner_param.is_inner_id_allowed != nullptr) {
@@ -942,6 +946,14 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
                                                        std::memory_order_relaxed);
         statistics->sindi_filter_reject_count.fetch_add(filter_reject_count,
                                                          std::memory_order_relaxed);
+        statistics->sindi_parallel_wall_time_us.fetch_add(
+            parallel_wall_time_us, std::memory_order_relaxed);
+        statistics->sindi_parallel_worker_max_time_us.fetch_add(
+            parallel_worker_max_time_us, std::memory_order_relaxed);
+        statistics->sindi_parallel_heap_merge_time_us.fetch_add(
+            parallel_heap_merge_time_us, std::memory_order_relaxed);
+        statistics->sindi_parallel_worker_count.fetch_add(
+            parallel_worker_count, std::memory_order_relaxed);
         statistics->sindi_term_list_heap_insert_enabled.store(
             use_term_lists_heap_insert, std::memory_order_relaxed);
         statistics->sindi_filter_limit_reached.store(
@@ -979,6 +991,8 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
             windows.push_back(static_cast<uint32_t>(cur));
         }
         const auto worker_count = static_cast<uint32_t>(inner_param.parallel_search_thread_count);
+        const auto parallel_begin = std::chrono::steady_clock::now();
+        parallel_worker_count = worker_count;
         struct WorkerMetrics {
             uint64_t query_window_time_us{0};
             uint64_t heap_insert_time_us{0};
@@ -1071,6 +1085,9 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
         for (const auto& metrics : worker_metrics) {
             query_window_time_us += metrics.query_window_time_us;
             heap_insert_time_us += metrics.heap_insert_time_us;
+            parallel_worker_max_time_us =
+                std::max(parallel_worker_max_time_us,
+                         metrics.query_window_time_us + metrics.heap_insert_time_us);
             window_count += metrics.window_count;
             if (statistics != nullptr) {
                 statistics->sindi_query_posting_visit_count.fetch_add(
@@ -1086,6 +1103,7 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
                 }
             }
         }
+        const auto heap_merge_begin = std::chrono::steady_clock::now();
         for (auto& worker_heap : worker_heaps) {
             while (not worker_heap.empty()) {
                 const auto candidate = worker_heap.top();
@@ -1098,6 +1116,8 @@ SINDI::search_impl(const SparseTermComputerPtr& computer,
                 worker_heap.pop();
             }
         }
+        parallel_heap_merge_time_us = ElapsedMicros(heap_merge_begin);
+        parallel_wall_time_us = ElapsedMicros(parallel_begin);
     } else {
         Vector<float> dists(window_size_, 0.0F, search_allocator);
         SindiQueryContext query_context(search_allocator);

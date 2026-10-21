@@ -66,7 +66,7 @@ TEST_CASE("Search metrics snapshot preserves counters", "[ut][search_metrics]") 
     CHECK(vsag::MetricsSchema::Base().Contains("sindi_filter_reject_count"));
     CHECK(vsag::MetricsSchema::Base().Contains("sindi_term_list_heap_insert_enabled"));
     CHECK(vsag::MetricsSchema::Base().Contains("sindi_filter_limit_reached"));
-    CHECK(vsag::MetricsSchema::Base().Fields().size() == 33);
+    CHECK(vsag::MetricsSchema::Base().Fields().size() == 37);
     CHECK(std::string(vsag::DistanceEvaluationPhaseName(
               static_cast<vsag::DistanceEvaluationPhase>(255))) == "unknown");
     CHECK(std::string(vsag::DistanceEvaluationBackendName(
