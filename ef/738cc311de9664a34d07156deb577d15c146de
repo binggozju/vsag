@@ -1,0 +1,21 @@
+src/impl/thread_pool/default_thread_pool.cpp
+  s_108fc97130fbed::t_c4e4c19fc153c8 22-39,47-55
+src/impl/thread_pool/default_thread_pool.h
+  s_108fc97130fbed::t_9060b24e6be74e 34-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ef738cc311de9664a34d07156deb577d15c146de",
+  "prompts": {},
+  "sessions": {
+    "s_108fc97130fbed": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19b04-b5aa-7181-b98e-7c47e8bcff16",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "binggozju <binggozhan@163.com>"
+    }
+  }
+}
