@@ -1,0 +1,23 @@
+src/datacell/CMakeLists.txt
+  s_108fc97130fbed::t_bdf6bb113e86c0 42-44
+  s_108fc97130fbed::t_11ef4c5c0fa1b8 39-41
+tests/cmake/datacell_job_pool_test.cmake
+  s_108fc97130fbed::t_b0f56f754ea4d9 16-19,21,34,48,56-57,64-70
+  s_108fc97130fbed::t_271c21f2fc9243 71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5fbb29f761266c01d8d78cf9f10eb1ee3b8de2cd",
+  "prompts": {},
+  "sessions": {
+    "s_108fc97130fbed": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19b04-b5aa-7181-b98e-7c47e8bcff16",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "binggozju <binggozhan@163.com>"
+    }
+  }
+}
