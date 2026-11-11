@@ -1,0 +1,22 @@
+src/impl/thread_pool/cpu_resource.cpp
+  s_108fc97130fbed::t_7480cc4c2aacc3 88-94
+  s_108fc97130fbed::t_7d1976e0792a4e 84-85
+src/impl/thread_pool/cpu_resource_test.cpp
+  s_108fc97130fbed::t_7480cc4c2aacc3 37-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0b32570ff4f3c2d64a68cbdaf76ad5e981e1d88e",
+  "prompts": {},
+  "sessions": {
+    "s_108fc97130fbed": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19b04-b5aa-7181-b98e-7c47e8bcff16",
+        "model": "gpt-6-luna"
+      },
+      "human_author": "binggozju <binggozhan@163.com>"
+    }
+  }
+}
