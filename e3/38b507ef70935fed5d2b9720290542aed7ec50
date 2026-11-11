@@ -1,0 +1,26 @@
+src/impl/thread_pool/cpu_resource_test.cpp
+  s_108fc97130fbed::t_9cdb5af9ba054a 47-48
+  s_108fc97130fbed::t_73886dc8e4c643 11
+  s_108fc97130fbed::t_ccad3eb60600c3 34-35,39-46,49
+  s_108fc97130fbed::t_42ab18ac7440fb 50
+src/impl/thread_pool/cpu_resource.h
+  s_108fc97130fbed::t_73886dc8e4c643 13
+src/impl/thread_pool/cpu_resource.cpp
+  s_108fc97130fbed::t_73886dc8e4c643 84-94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e338b507ef70935fed5d2b9720290542aed7ec50",
+  "prompts": {},
+  "sessions": {
+    "s_108fc97130fbed": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19b04-b5aa-7181-b98e-7c47e8bcff16",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "binggozju <binggozhan@163.com>"
+    }
+  }
+}
