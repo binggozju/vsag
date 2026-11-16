@@ -59,6 +59,10 @@ SparseDmqDataCell::Query(float* result_dists,
     auto dmq_computer = std::dynamic_pointer_cast<Computer<SparseDmqQuantizer>>(computer);
     CHECK_ARGUMENT(dmq_computer != nullptr, "SparseDmqDataCell computer type mismatch");
     std::shared_lock lock(this->mutex_);
+    auto* profile = ctx ? ctx->sparse_profile : nullptr;
+    if (profile)
+        profile->io_strategy = "resident_dmq";
+    QueryProfileTimer timer(profile ? &profile->compute_ns : nullptr);
     for (InnerIdType index = 0; index < id_count; ++index) {
         dmq_computer->ComputeDist(GetCode(idx[index]), result_dists + index);
     }

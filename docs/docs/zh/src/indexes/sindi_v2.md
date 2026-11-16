@@ -126,6 +126,10 @@ SINDI_V2 仍保留 term-first posting 布局。发布时间过滤支持 mutable�
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `n_candidate` | int | `0` | 粗排候选数量；`0` 使用根据 `topk` 推导的索引默认值。 |
+| `window_parallelism` | integer | `1` | 距离计算请求槽位数，包含调用线程，范围 `[1,16]`。注入查询资源后，符合条件的 immutable 内存 KNN 使用有界有序批次。 |
+| `profile_search` | bool | `false` | 采集阶段墙钟、window 工作量、批次摘要及精排逻辑读取量。 |
+| `diagnose_search` | bool | `false` | 采集 window 距离、候选堆和最终结果的有序摘要，用于受控一致性对比；摘要相同不能代替逐项比较。 |
+| `profile_cpu` | bool | `false` | 采集调用线程及 window 计算线程 CPU 时间；时钟不可用时明确标识。 |
 | `filter_callback_limit` | uint64 | `0` | 单次带过滤检索最多调用用户 `Filter::CheckValid` 回调的次数；`0` 表示不限制。达到正数上限时，在正常处理最后一次回调结果后停止候选及后续 window 扫描，并返回此前已经通过过滤的候选，因此结果可能不完整。该限制适用于常规 KNN 和范围检索 API。 |
 | `query_prune_ratio` | float | `0.0` | 跳过最低权重查询 term 的比例，范围为 `[0.0, 1.0)`。 |
 | `term_prune_ratio` | float | `0.0` | 每条 term list 中跳过最低存储权重的比例，范围为 `[0.0, 1.0)`。 |
@@ -136,6 +140,35 @@ SINDI_V2 仍保留 term-first posting 布局。发布时间过滤支持 mutable�
 SINDI V2 会根据构建阶段的 `doc_prune_ratio` 与检索阶段的 `query_prune_ratio`
 自动选择堆插入策略。按当前 `0.1` 阈值，当两个比例都 `<= 0.1` 时，使用基于距离数组的
 入堆路径；只要任一比例大于 `0.1`，就使用基于 term-list 的入堆路径。
+
+### 有序并行 KNN
+
+创建/加载索引前通过 `Engine` 注入共享 `SearchResource`，请求设置
+`{"sindi_v2":{"window_parallelism":4}}`。查询期间不创建线程池。P1、无资源、mutable/
+文件型 posting、范围搜索和 reasoning 保持串行。准入可降低实际槽位；资源已就绪但仅获准
+一个调用槽位时仍执行有序批次，保持该策略的 deadline。后台并发受共享资源约束。
+
+每批独立计算各 window 距离，等待全部任务结束后，在调用线程按原顺序消费。复用原
+Filter、callback 预算、全局候选堆和精排，不设置局部候选配额，拒绝
+`parallel_n_candidate_ratio`。完整执行且 Filter 结果稳定时，保留串行累分顺序、候选顺序和
+同分处理。callback 预算截断仍返回相同的已接受前缀；预计算但未消费的 window 不调用 Filter。
+
+并行 deadline 从取得索引读锁之前开始，在批次边界、window 消费、精排及发布边界检查，
+发生错误先等待已提交任务结束再返回。取消是协作式的，不中断正在执行的单个 window 或 IO。
+并行超时返回错误；P1 保留原有超时返回部分结果的行为。
+
+Dataset 统计包含 `sindi_v2_strategy/fallback/stop_reason`、请求/实际槽位、已计算/消费
+window、批次数及候选数。`sindi_v2_execution_complete` 描述扫描停止原因，原 `complete`
+描述距离计数覆盖，两者含义不同。
+
+开启 `profile_search` 后，prepare、batch wall、有序 consume、rerank、output 与残差 other
+采用不重叠口径；caller compute、join wait 是 batch wall 的组成部分，worker 累计 elapsed
+和 CPU 不能与墙钟相加。window 计算直方图区间为 `[0,50)`、`[50,200)`、`[200,1000)`、
+`[1000,5000)`、`[5000,20000)`、`[20000,+inf)` 微秒；最慢 window 带扫描 posting 数，
+最慢 batch 带首尾 window、宽度和 join wait。精排 read 测量后端调用时间，bytes/ranges
+为逻辑请求，不代表物理磁盘流量或缓存命中；后两者不可用。`diagnose_search` 对已消费的
+window 距离、精排前候选堆及有序最终结果计算摘要，不记录正文。三个观测开关相互独立，
+默认关闭；P1/P2/P4 测量使用相同设置，并以 A/A 对照量化观测开销。
 
 ## 如何选择 SINDI 与 SINDI_V2
 

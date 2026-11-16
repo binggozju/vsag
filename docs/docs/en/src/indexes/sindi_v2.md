@@ -132,6 +132,10 @@ Search parameters live under `{"sindi_v2": {...}}`.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `n_candidate` | int | `0` | Coarse candidate count; `0` uses the index default derived from `topk`. |
+| `window_parallelism` | integer | `1` | Requested distance-computation slots, including the caller; `[1,16]`. Eligible immutable in-memory KNN searches use bounded ordered batches when query resources are injected. |
+| `profile_search` | bool | `false` | Collect phase wall times, window work, batch summaries and logical rerank reads. |
+| `diagnose_search` | bool | `false` | Collect ordered window-distance, candidate and result digests for controlled consistency comparisons. Hashes are diagnostic evidence, not proof of equality. |
+| `profile_cpu` | bool | `false` | Sample caller and window-computation thread CPU time; unavailable clocks are explicitly marked. |
 | `filter_callback_limit` | uint64 | `0` | Maximum user `Filter::CheckValid` callback invocations for one filtered search. `0` disables the limit. Reaching a positive limit stops candidate and window scanning after processing the final callback result and returns the candidates accepted so far, so the result may be partial. The limit applies to the regular KNN and range-search APIs. |
 | `query_prune_ratio` | float | `0.0` | Fraction of the lowest-weight query terms skipped (`[0.0, 1.0)`). |
 | `term_prune_ratio` | float | `0.0` | Fraction of the lowest stored values skipped in each term list (`[0.0, 1.0)`). |
@@ -144,6 +148,42 @@ SINDI V2 chooses the heap-insertion strategy automatically from the build-time
 `doc_prune_ratio` and search-time `query_prune_ratio`. With the current `0.1`
 threshold, it uses distance-array insertion when both ratios are `<= 0.1`; if
 either ratio is greater than `0.1`, it uses term-list heap insertion.
+
+### Ordered parallel KNN
+
+Inject a shared `SearchResource` through `Engine` before creating/loading the index, then request
+`{"sindi_v2":{"window_parallelism":4}}`. VSAG does not create a pool in a query. P1, missing
+resources, mutable/file-backed postings, range and reasoning searches retain serial execution.
+Admission may grant fewer slots; eligible requests with resources remain ordered batches even
+when only the calling slot is available. The shared resource bounds background concurrency.
+
+Each batch computes independent window distances, joins all submitted tasks, then consumes
+windows in the original order on the caller. The original Filter, callback budget, global candidate
+heap and reranking are reused. There is no local candidate quota; `parallel_n_candidate_ratio`
+is rejected. For completed searches with stable Filters this preserves serial scoring, candidate
+ordering and tie handling. A callback limit still returns the same accepted prefix; speculative
+windows may have been computed but never invoke the Filter.
+
+Parallel deadlines begin before acquiring the index read lock and are checked between batches,
+window consumptions, reranking and result publication. Submitted tasks drain before an error
+escapes. Cancellation is cooperative; a running window or I/O call is not interrupted. Deadline
+expiration returns an error. P1 retains its existing partial-result timeout behavior.
+
+Dataset statistics include `sindi_v2_strategy`, `fallback`, `stop_reason`, requested/granted slots,
+computed/consumed windows, batches and candidates (all latter names have the `sindi_v2_` prefix).
+`sindi_v2_execution_complete` describes scan termination; the existing `complete` describes
+distance-counter coverage and is a different property.
+
+With `profile_search`, prepare, batch wall, ordered consume, rerank, output and residual `other`
+times are disjoint. Caller compute and join wait are subsets of batch wall; summed worker elapsed
+and CPU times must not be added to wall time. Window compute buckets are `[0,50)`, `[50,200)`,
+`[200,1000)`, `[1000,5000)`, `[5000,20000)`, `[20000,+inf)` microseconds. The slowest window
+includes its posting count; the slowest batch includes its first/last windows, width and join wait.
+Rerank read time measures backend calls, and bytes/ranges are logical requests, not physical disk
+traffic or cache hits. Those physical metrics are unavailable. `diagnose_search` hashes consumed
+window distances, the pre-rerank heap and ordered final results without logging their payloads.
+All three profiling switches are independent and disabled by default; use the same settings in
+P1/P2/P4 measurements and an A/A comparison to quantify collection overhead.
 
 ## Choosing between SINDI and SINDI_V2
 

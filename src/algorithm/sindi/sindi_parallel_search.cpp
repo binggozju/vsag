@@ -37,20 +37,6 @@ resource_limit(const char* name, uint64_t fallback) {
     return parsed;
 }
 
-struct Reservation {
-    explicit Reservation(SearchExecutionContext& resources) : owner(resources) {
-        std::lock_guard<std::mutex> guard(owner.mutex);
-        ++owner.callers;
-    }
-    ~Reservation() {
-        std::lock_guard<std::mutex> guard(owner.mutex);
-        owner.busy -= extra;
-        --owner.callers;
-    }
-    SearchExecutionContext& owner;
-    uint32_t extra{0};
-};
-
 class BudgetedFilter final : public Filter {
 public:
     BudgetedFilter(FilterPtr delegate, SindiParallelState& state)
@@ -248,7 +234,7 @@ SearchSindiPartitions(const SindiPartitionSearchRequest& request,
     CHECK_ARGUMENT(state.resources != nullptr,
                    "SINDI partition executor requires prepared resources");
     auto& shared = *state.resources;
-    Reservation reservation(shared);
+    SearchExecutionReservation reservation(shared);
     auto maximum = static_cast<uint32_t>(
         std::min({uint64_t(state.requested), groups, uint64_t(state.execution_limit)}));
     auto& lease = state.lease;
