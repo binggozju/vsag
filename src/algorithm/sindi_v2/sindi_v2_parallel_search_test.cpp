@@ -7,6 +7,7 @@
 #include <future>
 #include <numeric>
 #include <stdexcept>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -55,6 +56,7 @@ TEST_CASE("SINDIV2 batches preserve global candidates and serial filter order",
                                        SparseValueQuantizationType::FP16,
                                        SparseValueQuantizationType::SQ8);
     const bool reorder = GENERATE(false, true);
+    const bool pruning = GENERATE(false, true);
     const uint32_t workers = GENERATE(0U, 3U);
     auto allocator = SafeAllocator::FactoryDefaultAllocator();
     IndexCommonParam common;
@@ -66,7 +68,7 @@ TEST_CASE("SINDIV2 batches preserve global candidates and serial filter order",
     parameters->term_id_limit = 8;
     parameters->window_size = 5;
     parameters->immutable = true;
-    parameters->doc_prune_ratio = 0.5F;
+    parameters->doc_prune_ratio = pruning ? 0.5F : 0.0F;
     parameters->use_reorder = reorder;
     parameters->remap_term_ids = GENERATE(false, true);
     parameters->rerank_type = "fp16";
@@ -96,11 +98,14 @@ TEST_CASE("SINDIV2 batches preserve global candidates and serial filter order",
     SparseVector sparse{2, query_terms.data(), query_weights.data()};
     auto query = Dataset::Make();
     query->NumElements(1)->SparseVectors(&sparse)->Owner(false);
-    const auto request = [](uint32_t p, uint64_t budget) {
+    const auto request = [pruning](uint32_t p, uint64_t budget) {
         return fmt::format(R"({{"sindi_v2":{{"window_parallelism":{},"n_candidate":9,
-            "query_prune_ratio":0.3,"term_retain_threshold":100,
+            "query_prune_ratio":{},"term_prune_ratio":{},"term_retain_threshold":{},
             "filter_callback_limit":{},"profile_search":true,"diagnose_search":true}}}})",
                            p,
+                           pruning ? 0.3 : 0.0,
+                           pruning ? 0.4 : 0.0,
+                           pruning ? 8 : 0,
                            budget);
     };
     const std::vector<std::string> digests{"sindi_v2_window_digest", "sindi_v2_candidate_digest"};
@@ -114,6 +119,15 @@ TEST_CASE("SINDIV2 batches preserve global candidates and serial filter order",
             REQUIRE(filter->calls == serial_filter->calls);
             REQUIRE(parallel->GetStatistics(digests) == serial->GetStatistics(digests));
             REQUIRE(parallel->GetStatistics({"sindi_v2_strategy"})[0] == "\"ordered_batches\"");
+            if (reorder && parallel->GetDim() > 0) {
+                const auto io = parallel->GetStatistics({"sindi_v2_rerank_logical_bytes",
+                                                         "sindi_v2_rerank_read_ranges",
+                                                         "sindi_v2_rerank_io_strategy"});
+                REQUIRE(std::stoull(io[0]) > 0);
+                REQUIRE(std::stoull(io[1]) > 0);
+                REQUIRE_FALSE(io[2].empty());
+                REQUIRE(io[2] != "\"unavailable\"");
+            }
             REQUIRE(common.search_resources_->busy == 0);
             REQUIRE(common.search_resources_->callers == 0);
         }
@@ -147,6 +161,23 @@ TEST_CASE("SINDIV2 batches preserve global candidates and serial filter order",
         const auto actual = serial_index.KnnSearch(query, 5, request(4, 0), nullptr);
         SameResults(actual, serial_index.KnnSearch(query, 5, request(1, 0), nullptr));
         REQUIRE(actual->GetStatistics({"sindi_v2_fallback"})[0] == "\"no_resources\"");
+    }
+    SECTION("one window retains the parallel deadline with just the caller slot") {
+        auto one_window = Dataset::Make()
+                              ->NumElements(4)
+                              ->Ids(labels.data())
+                              ->SparseVectors(vectors.data())
+                              ->Owner(false);
+        SINDIV2 small_index(parameters, common);
+        REQUIRE(small_index.Build(one_window).empty());
+        const auto actual = small_index.KnnSearch(query, 5, request(4, 0), nullptr);
+        SameResults(actual, small_index.KnnSearch(query, 5, request(1, 0), nullptr));
+        REQUIRE(actual->GetStatistics({"sindi_v2_strategy"})[0] == "\"ordered_batches\"");
+        REQUIRE(actual->GetStatistics({"sindi_v2_granted_slots"})[0] == "1");
+        REQUIRE_THROWS(small_index.KnnSearch(
+            query, 5, R"({"sindi_v2":{"window_parallelism":4,"timeout_ms":0}})", nullptr));
+        REQUIRE(common.search_resources_->busy == 0);
+        REQUIRE(common.search_resources_->callers == 0);
     }
     SECTION("range remains serial when parallelism is requested") {
         const auto actual = index.RangeSearch(query, 2.0F, request(4, 0), nullptr, 10);

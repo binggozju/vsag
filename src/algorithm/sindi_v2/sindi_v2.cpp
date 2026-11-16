@@ -872,7 +872,7 @@ SINDIV2::knn_search(const DatasetPtr& query,
 
     SINDIV2SearchParameter search_param;
     search_param.FromJson(JsonType::Parse(parameters));
-    auto execution = MakeSindiV2Profile(search_param, entry_time);
+    auto execution = make_sindi_v2_profile(search_param, entry_time);
     SindiV2FailureDiagnostics failure_diagnostics(execution, statistics);
     SindiCpuTimer caller_cpu_timer(execution.profile_cpu, execution.caller_cpu);
     CHECK_ARGUMENT(k <= std::numeric_limits<int64_t>::max() / SPARSE_AMPLIFICATION_FACTOR,
@@ -1102,8 +1102,9 @@ SINDIV2::search_impl(const SparseTermComputerPtr& computer,
             return false;
         }
         if (inner_param.time_cost != nullptr && inner_param.time_cost->CheckOvertime()) {
-            if (statistics)
+            if (statistics != nullptr) {
                 statistics->is_timeout.store(true, std::memory_order_relaxed);
+            }
             profile.stop = "timeout";
             return false;
         }
@@ -1116,7 +1117,7 @@ SINDIV2::search_impl(const SparseTermComputerPtr& computer,
     const bool eligible = mode == KNN_SEARCH && reasoning_ctx == nullptr &&
                           has_effective_query_terms && immutable_enabled_ && memory_postings;
     profile.parallel = profile.requested > 1 && search_resources_ != nullptr && eligible &&
-                       min_window_id < max_window_id;
+                       min_window_id <= max_window_id;
     if (profile.parallel) {
         profile.fallback = "none";
     } else if (profile.requested == 1) {
@@ -1124,24 +1125,28 @@ SINDIV2::search_impl(const SparseTermComputerPtr& computer,
     } else if (!search_resources_) {
         profile.fallback = "no_resources";
     } else {
-        profile.fallback = !eligible ? "unsupported_mode" : "few_windows";
+        profile.fallback = !eligible ? "unsupported_mode" : "empty_windows";
     }
     if (profile.parallel) {
+        const auto slot_limit = static_cast<uint32_t>(
+            std::min<uint64_t>(profile.requested, max_window_id - min_window_id + 1));
         auto cursor = min_window_id;
         const auto next = [&](uint32_t& window, bool& prune) {
             cursor = metadata_filter_.NextMatchingWindow(
                 metadata_route, window_size_, cursor, max_window_id);
-            if (cursor > max_window_id)
+            if (cursor > max_window_id) {
                 return false;
+            }
             window = static_cast<uint32_t>(cursor++);
             prune = !metadata_filter_.RequiresFullTermScan(metadata_route, window, window_size_);
             return true;
         };
-        SearchSindiV2Batches(
+        search_sindi_v2_batches(
             *search_resources_,
             term_datacell_,
             computer,
             window_size_,
+            slot_limit,
             use_term_lists_heap_insert,
             next,
             [&](SindiV2WindowSlot& slot) {
@@ -1154,8 +1159,9 @@ SINDIV2::search_impl(const SparseTermComputerPtr& computer,
         for (auto cur = min_window_id; cur <= max_window_id; ++cur) {
             cur = metadata_filter_.NextMatchingWindow(
                 metadata_route, window_size_, cur, max_window_id);
-            if (cur > max_window_id)
+            if (cur > max_window_id) {
                 break;
+            }
             const auto window = static_cast<uint32_t>(cur);
             computer->SetTermPruneEnabled(
                 !metadata_filter_.RequiresFullTermScan(metadata_route, window, window_size_));
@@ -1179,8 +1185,9 @@ SINDIV2::search_impl(const SparseTermComputerPtr& computer,
             }
             profile.scan_postings += query_context.scanned_postings;
             ++profile.computed_windows;
-            if (!consume_window(window, computer, dists, query_context))
+            if (!consume_window(window, computer, dists, query_context)) {
                 break;
+            }
         }
     }
     profile.DigestCandidates(heap);
@@ -1360,7 +1367,7 @@ SINDIV2::RangeSearch(const DatasetPtr& query,
 
     SINDIV2SearchParameter search_param;
     search_param.FromJson(JsonType::Parse(parameters));
-    auto execution = MakeSindiV2Profile(search_param, entry_time);
+    auto execution = make_sindi_v2_profile(search_param, entry_time);
     SindiV2FailureDiagnostics failure_diagnostics(execution, statistics);
     SindiCpuTimer caller_cpu_timer(execution.profile_cpu, execution.caller_cpu);
     CHECK_ARGUMENT(  // NOLINT(readability-simplify-boolean-expr)
@@ -1541,7 +1548,7 @@ SINDIV2::SearchWithRequest(const SearchRequest& request) const {
     SearchStatistics statistics;
     SINDIV2SearchParameter search_param;
     search_param.FromJson(JsonType::Parse(request.params_str_));
-    auto execution = MakeSindiV2Profile(search_param, entry_time);
+    auto execution = make_sindi_v2_profile(search_param, entry_time);
     SindiV2FailureDiagnostics failure_diagnostics(execution, statistics);
     SindiCpuTimer caller_cpu_timer(execution.profile_cpu, execution.caller_cpu);
 

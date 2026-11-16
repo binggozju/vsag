@@ -16,7 +16,7 @@
 namespace vsag {
 namespace {
 void
-HashWord(uint64_t& hash, uint64_t word) {
+hash_word(uint64_t& hash, uint64_t word) {
     for (uint32_t i = 0; i < 8; ++i) {
         hash = (hash ^ (word & 255)) * 1099511628211ULL;
         word >>= 8;
@@ -25,8 +25,8 @@ HashWord(uint64_t& hash, uint64_t word) {
 }  // namespace
 
 SindiV2SearchProfile
-MakeSindiV2Profile(const SINDIV2SearchParameter& parameters,
-                   SindiV2SearchProfile::Clock::time_point start) {
+make_sindi_v2_profile(const SINDIV2SearchParameter& parameters,
+                      SindiV2SearchProfile::Clock::time_point start) {
     SindiV2SearchProfile profile;
     profile.start = start;
     profile.enabled = parameters.profile_search;
@@ -85,7 +85,7 @@ SindiV2FailureDiagnostics::~SindiV2FailureDiagnostics() {
             statistics_.is_timeout.store(true, std::memory_order_relaxed);
         }
         logger::error("SINDI_V2 execution failure " + profile_.Dump(statistics_));
-    } catch (...) {
+    } catch (...) {  // NOLINT(bugprone-empty-catch): preserve the original query exception.
         // Diagnostic allocation/logging must never replace the original failure.
     }
 }
@@ -95,11 +95,11 @@ SindiV2SearchProfile::DigestWindow(uint32_t window, const Vector<float>& dists) 
     if (!diagnose) {
         return;
     }
-    HashWord(window_digest, window);
+    hash_word(window_digest, window);
     for (float distance : dists) {
         uint32_t bits;
         std::memcpy(&bits, &distance, sizeof(bits));
-        HashWord(window_digest, bits);
+        hash_word(window_digest, bits);
     }
 }
 
@@ -114,8 +114,8 @@ SindiV2SearchProfile::DigestCandidates(const MaxHeap& heap) {
         uint32_t bits;
         const auto candidate = copy.top();
         std::memcpy(&bits, &candidate.first, sizeof(bits));
-        HashWord(candidate_digest, bits);
-        HashWord(candidate_digest, candidate.second);
+        hash_word(candidate_digest, bits);
+        hash_word(candidate_digest, candidate.second);
         copy.pop();
     }
 }
@@ -125,19 +125,22 @@ SindiV2SearchProfile::DigestResults(const DatasetPtr& result) {
     if (!diagnose) {
         return;
     }
-    HashWord(result_digest, static_cast<uint64_t>(result->GetDim()));
+    hash_word(result_digest, static_cast<uint64_t>(result->GetDim()));
     for (int64_t i = 0; i < result->GetDim(); ++i) {
         uint32_t bits;
         const auto distance = result->GetDistances()[i];
         std::memcpy(&bits, &distance, sizeof(bits));
-        HashWord(result_digest, bits);
-        HashWord(result_digest, static_cast<uint64_t>(result->GetIds()[i]));
+        hash_word(result_digest, bits);
+        hash_word(result_digest, static_cast<uint64_t>(result->GetIds()[i]));
     }
 }
 
 std::string
 SindiV2SearchProfile::Dump(const SearchStatistics& statistics) const {
     auto json = statistics.ToJson();
+    const auto us = [&](const char* key, uint64_t ns) {
+        json[key].SetDouble(static_cast<double>(ns) / 1000.0);
+    };
     json["sindi_v2_strategy"].SetString(parallel ? "ordered_batches" : "serial");
     json["sindi_v2_fallback"].SetString(fallback);
     json["sindi_v2_stop_reason"].SetString(stop);
@@ -155,14 +158,13 @@ SindiV2SearchProfile::Dump(const SearchStatistics& statistics) const {
         json["sindi_v2_caller_cpu_available"].SetBool(caller_cpu.available);
         json["sindi_v2_compute_cpu_available"].SetBool(compute_available);
         if (caller_cpu.available) {
-            json["sindi_v2_caller_cpu_us"].SetFloat(caller_cpu.nanoseconds / 1000.0);
+            us("sindi_v2_caller_cpu_us", caller_cpu.nanoseconds);
         }
         if (compute_available) {
-            json["sindi_v2_compute_cpu_us"].SetFloat(compute_cpu_ns / 1000.0);
+            us("sindi_v2_compute_cpu_us", compute_cpu_ns);
         }
     }
     if (enabled) {
-        const auto us = [&](const char* key, uint64_t ns) { json[key].SetFloat(ns / 1000.0); };
         us("sindi_v2_prepare_us", prepare_ns);
         us("sindi_v2_batch_wall_us", batch_ns);
         us("sindi_v2_caller_compute_us", caller_compute_ns);
@@ -218,21 +220,25 @@ SindiV2WindowSlot::SindiV2WindowSlot(const SparseTermComputerPtr& query, uint32_
 }
 
 void
-SearchSindiV2Batches(SearchExecutionContext& resources,
-                     const SindiSearchTermDataCellPtr& datacell,
-                     const SparseTermComputerPtr& computer,
-                     uint32_t window_size,
-                     bool use_term_lists,
-                     const std::function<bool(uint32_t&, bool&)>& next,
-                     const std::function<bool(SindiV2WindowSlot&)>& consume,
-                     SindiV2SearchProfile& profile,
-                     SearchStatistics* statistics) {
+search_sindi_v2_batches(SearchExecutionContext& resources,
+                        const SindiSearchTermDataCellPtr& datacell,
+                        const SparseTermComputerPtr& computer,
+                        uint32_t window_size,
+                        uint32_t slot_limit,
+                        bool use_term_lists,
+                        const std::function<bool(uint32_t&, bool&)>& next,
+                        const std::function<bool(SindiV2WindowSlot&)>& consume,
+                        SindiV2SearchProfile& profile,
+                        SearchStatistics* statistics) {
+    const bool valid_slot_limit = slot_limit >= 1 && slot_limit <= profile.requested;
+    CHECK_ARGUMENT(valid_slot_limit, "SINDI_V2 slot limit must be in [1, requested slots]");
     SearchExecutionReservation reservation(resources);
     if (resources.pool && !resources.pool->RequiresInlineExecution()) {
-        reservation.extra = resources.TryReserve(profile.requested - 1);
+        reservation.extra = resources.TryReserve(slot_limit - 1);
     }
     profile.granted = reservation.extra + 1;
     std::vector<std::unique_ptr<SindiV2WindowSlot>> slots;
+    slots.reserve(profile.granted);
     for (uint32_t i = 0; i < profile.granted; ++i) {
         slots.emplace_back(std::make_unique<SindiV2WindowSlot>(computer, window_size));
     }
@@ -321,7 +327,7 @@ SearchSindiV2Batches(SearchExecutionContext& resources,
             profile.compute_cpu_ns += slot.cpu.nanoseconds;
             profile.compute_cpu_complete = profile.compute_cpu_complete && slot.cpu.available;
             profile.RecordCompute(slot.window, slot.compute_ns, slot.context.scanned_postings);
-            if (statistics && slot.context.has_untracked_approximate_evaluations) {
+            if (statistics != nullptr && slot.context.has_untracked_approximate_evaluations) {
                 statistics->complete.store(false, std::memory_order_relaxed);
             }
         }

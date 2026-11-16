@@ -373,8 +373,8 @@ SINDIV2SearchParameter::FromJson(const JsonType& json) {
     window_parallelism = search_json.Contains("window_parallelism")
                              ? parse_uint32(search_json["window_parallelism"], "window_parallelism")
                              : 1;
-    CHECK_ARGUMENT(window_parallelism >= 1 && window_parallelism <= 16,
-                   "window_parallelism must be an integer in [1,16]");
+    const bool valid_width = window_parallelism >= 1 && window_parallelism <= 16;
+    CHECK_ARGUMENT(valid_width, "window_parallelism must be an integer in [1,16]");
     CHECK_ARGUMENT(!search_json.Contains("parallel_n_candidate_ratio"),
                    "SINDI_V2 ordered batches do not use parallel_n_candidate_ratio");
     profile_search =

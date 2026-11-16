@@ -93,8 +93,8 @@ struct SindiV2WindowSlot {
 };
 
 SindiV2SearchProfile
-MakeSindiV2Profile(const SINDIV2SearchParameter& parameters,
-                   SindiV2SearchProfile::Clock::time_point start);
+make_sindi_v2_profile(const SINDIV2SearchParameter& parameters,
+                      SindiV2SearchProfile::Clock::time_point start);
 
 // Errors cannot carry a Dataset. Emit the same bounded, payload-free diagnostics
 // when profiling is enabled, while preserving the original exception.
@@ -113,15 +113,17 @@ private:
 
 // next() chooses windows on the calling thread. consume() alone touches filters
 // and the global heap, in that same order. False ends the successful prefix.
+// slot_limit bounds requested slots by the remaining window span and is nonzero.
 void
-SearchSindiV2Batches(SearchExecutionContext& resources,
-                     const SindiSearchTermDataCellPtr& datacell,
-                     const SparseTermComputerPtr& computer,
-                     uint32_t window_size,
-                     bool use_term_lists,
-                     const std::function<bool(uint32_t&, bool&)>& next,
-                     const std::function<bool(SindiV2WindowSlot&)>& consume,
-                     SindiV2SearchProfile& profile,
-                     SearchStatistics* statistics);
+search_sindi_v2_batches(SearchExecutionContext& resources,
+                        const SindiSearchTermDataCellPtr& datacell,
+                        const SparseTermComputerPtr& computer,
+                        uint32_t window_size,
+                        uint32_t slot_limit,
+                        bool use_term_lists,
+                        const std::function<bool(uint32_t&, bool&)>& next,
+                        const std::function<bool(SindiV2WindowSlot&)>& consume,
+                        SindiV2SearchProfile& profile,
+                        SearchStatistics* statistics);
 
 }  // namespace vsag
