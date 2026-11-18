@@ -1,0 +1,35 @@
+src/algorithm/sindi/sindi.cpp
+  s_f37ee119f37e39::t_3d31c56072d6a6 36-37
+src/algorithm/sindi/sindi_parallel_search_test.cpp
+  s_f37ee119f37e39::t_8afed82c4cbf17 34
+src/algorithm/sindi_v2/sindi_v2.cpp
+  s_f37ee119f37e39::t_7f868cd9d2e6ed 61-64,942-944,951-952,972-975,1163-1166,1172-1173,1181-1193
+src/algorithm/sindi_v2/sindi_v2_parallel_search.cpp
+  s_f37ee119f37e39::t_5277d4828e33e4 171-181,240-241,270-271
+src/algorithm/sindi_v2/sindi_v2_parallel_search.h
+  s_f37ee119f37e39::t_044a653fbf8a02 16-17
+src/algorithm/sindi_v2/sindi_v2_parallel_search_test.cpp
+  s_f37ee119f37e39::t_01a2c54e1d0fc6 23,41-44,50-52,55-56,59,69-72,75-76,82-84,96,162-163,180-183,199-200,207-211,266-271,391-392,423-427,438-440,458-459,469-474,488-490,554-555,567-568,576-577,591
+src/algorithm/sindi_v2/sindi_v2_parameter.cpp
+  s_f37ee119f37e39::t_ccdff04c750717 20,387-388
+src/impl/searcher/sindi_parallel_search.cpp
+  s_f37ee119f37e39::t_ee47e2ec8ef1bc 42-48,177-178,247-251,276-278,311-314,367-368,370-371,379-385,390-391,407-408,410-419,423-430,469-470,482-483
+src/impl/searcher/sindi_parallel_search.h
+  s_f37ee119f37e39::t_4b21a6580ed946 60-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "813b38ae0cdcc3202456155559c4cc4123f8dd23",
+  "prompts": {},
+  "sessions": {
+    "s_f37ee119f37e39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1e3b3-f61e-70a3-b5a6-26dd0876bf72",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "binggozju <binggozhan@163.com>"
+    }
+  }
+}
