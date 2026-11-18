@@ -1,0 +1,27 @@
+src/algorithm/sindi_v2/sindi_v2.cpp
+  s_f37ee119f37e39::t_c076772927b4da 63,65,67-69,1174,1176
+src/algorithm/sindi_v2/sindi_v2_parallel_search.cpp
+  s_f37ee119f37e39::t_773ca126561aa6 240,242
+src/algorithm/sindi_v2/sindi_v2_parallel_search_test.cpp
+  s_f37ee119f37e39::t_1f287f20c5937b 234-236,460-466,468-469,518-520,528,531
+src/algorithm/sindi_v2/sindi_v2_parameter.cpp
+  s_f37ee119f37e39::t_3fddec52484f9b 22,385-387
+src/impl/searcher/sindi_parallel_search.cpp
+  s_f37ee119f37e39::t_77e5641fb6e264 197-198,394-396,439-442
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "878971bbe91cb56e4a9d730bbe5725b44dd457e3",
+  "prompts": {},
+  "sessions": {
+    "s_f37ee119f37e39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1e3b3-f61e-70a3-b5a6-26dd0876bf72",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "binggozju <binggozhan@163.com>"
+    }
+  }
+}
