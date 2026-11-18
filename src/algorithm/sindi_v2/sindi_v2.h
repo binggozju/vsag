@@ -161,7 +161,8 @@ private:
                 SearchStatistics* statistics = nullptr,
                 const uint64_t* filter_callback_remaining = nullptr,
                 const SindiMetadataSearchRoute& metadata_route = {},
-                ReasoningContext* reasoning_ctx = nullptr) const;
+                ReasoningContext* reasoning_ctx = nullptr,
+                SindiParallelState* parallel = nullptr) const;
 
     DatasetPtr
     knn_search(const DatasetPtr& query,

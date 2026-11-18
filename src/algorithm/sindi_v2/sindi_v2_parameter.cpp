@@ -15,6 +15,8 @@
 
 #include "sindi_v2_parameter.h"
 
+#include <cmath>
+
 #include <fmt/format.h>
 
 #include <limits>
@@ -375,8 +377,17 @@ SINDIV2SearchParameter::FromJson(const JsonType& json) {
                              : 1;
     const bool valid_width = window_parallelism >= 1 && window_parallelism <= 16;
     CHECK_ARGUMENT(valid_width, "window_parallelism must be an integer in [1,16]");
-    CHECK_ARGUMENT(!search_json.Contains("parallel_n_candidate_ratio"),
-                   "SINDI_V2 ordered batches do not use parallel_n_candidate_ratio");
+    parallel_n_candidate_ratio = 2.0;
+    if (search_json.Contains("parallel_n_candidate_ratio")) {
+        parallel_n_candidate_ratio =
+            search_json["parallel_n_candidate_ratio"].GetInnerJson()->get<double>();
+    }
+    CHECK_ARGUMENT(std::isfinite(parallel_n_candidate_ratio) and parallel_n_candidate_ratio >= 1,
+                   "parallel_n_candidate_ratio must be finite and >= 1");
+    partition_policy = search_json.Contains("partition_policy")
+                         ? search_json["partition_policy"].GetString() : "fixed";
+    CHECK_ARGUMENT(partition_policy == "fixed" or partition_policy == "dynamic",
+                   "partition_policy must be fixed or dynamic");
     profile_search =
         search_json.Contains("profile_search") && search_json["profile_search"].GetBool();
     diagnose_search =
@@ -451,6 +462,8 @@ SINDIV2SearchParameter::ToJson() const {
     json[INDEX_SINDI_V2][SPARSE_TERM_PRUNE_RATIO].SetFloat(term_prune_ratio);
     json[INDEX_SINDI_V2][SPARSE_TERM_RETAIN_THRESHOLD].SetUint64(term_retain_threshold);
     json[INDEX_SINDI_V2]["window_parallelism"].SetUint64(window_parallelism);
+    json[INDEX_SINDI_V2]["parallel_n_candidate_ratio"].SetDouble(parallel_n_candidate_ratio);
+    json[INDEX_SINDI_V2]["partition_policy"].SetString(partition_policy);
     json[INDEX_SINDI_V2]["profile_search"].SetBool(profile_search);
     json[INDEX_SINDI_V2]["diagnose_search"].SetBool(diagnose_search);
     json[INDEX_SINDI_V2]["profile_cpu"].SetBool(profile_cpu);

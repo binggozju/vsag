@@ -39,8 +39,10 @@ resource_limit(const char* name, uint64_t fallback) {
 
 class BudgetedFilter final : public Filter {
 public:
-    BudgetedFilter(FilterPtr delegate, SindiParallelState& state)
-        : delegate_(std::move(delegate)), state_(state) {
+    BudgetedFilter(FilterPtr delegate, SindiParallelState& state,
+                   SindiSlotStatistics* stats, bool profile_search)
+        : delegate_(std::move(delegate)), state_(state), stats_(stats),
+          profile_search_(profile_search) {
     }
     bool
     CheckValid(int64_t id) const override {
@@ -52,7 +54,13 @@ public:
         if (stopped or not state_.ReserveCallback()) {
             return false;
         }
-        const auto allowed = delegate_->CheckValid(id);
+        if (stats_ != nullptr) {
+            ++stats_->filter_calls;
+        }
+        const auto allowed = [&] {
+            QueryProfileTimer timer(profile_search_ ? &stats_->filter_ns : nullptr);
+            return delegate_->CheckValid(id);
+        }();
         // Keep the last permitted result, then stop even if no later score
         // would cause another filter callback to be attempted.
         if (state_.callback_limit != 0 and
@@ -65,6 +73,8 @@ public:
 private:
     FilterPtr delegate_;
     SindiParallelState& state_;
+    SindiSlotStatistics* stats_;
+    bool profile_search_;
     mutable uint32_t checks_{0};
 };
 
@@ -160,7 +170,11 @@ SindiExecutionStatistics(JsonType&& json,
 }
 
 SindiParallelPlan
-SindiParallelPlan::Make(uint64_t windows, uint64_t candidates, double ratio, uint64_t topk) {
+SindiParallelPlan::Make(uint64_t windows,
+                        uint64_t candidates,
+                        double ratio,
+                        uint64_t topk,
+                        uint32_t group_limit) {
     uint64_t ratio_bits = 0;
     std::memcpy(&ratio_bits, &ratio, sizeof(ratio_bits));
     const bool valid_candidate_budget =
@@ -179,7 +193,8 @@ SindiParallelPlan::Make(uint64_t windows, uint64_t candidates, double ratio, uin
     CHECK_ARGUMENT(plan.capacity <= maximum, "parallel candidate capacity exceeds limit");
     // Keep each local heap large enough for TopK without exceeding the total budget.
     // Otherwise concentrated matches can underfill even a completed search.
-    const auto groups = std::min({uint64_t{16}, windows, plan.capacity / topk});
+    CHECK_ARGUMENT(group_limit >= 1 and group_limit <= 16, "invalid SINDI group limit");
+    const auto groups = std::min({uint64_t{group_limit}, windows, plan.capacity / topk});
     plan.boundaries.push_back(0);
     for (uint64_t i = 0; i < groups; ++i) {
         plan.boundaries.push_back(windows / groups * (i + 1) +
@@ -225,8 +240,11 @@ void
 SearchSindiPartitions(const SindiPartitionSearchRequest& request,
                       SindiParallelState& state,
                       MaxHeap& output) {
+    auto* diagnostics = state.diagnostics;
+    const bool profile_search = diagnostics != nullptr and diagnostics->profile_search;
     state.plan = SindiParallelPlan::Make(
-        request.windows.size(), request.search.ef, state.ratio, request.search.topk);
+        request.windows.size(), request.search.ef, state.ratio,
+        state.planning_topk != 0 ? state.planning_topk : request.search.topk, state.group_limit);
     const uint64_t groups = state.plan.quotas.size();
     if (groups == 0) {
         return;
@@ -237,44 +255,61 @@ SearchSindiPartitions(const SindiPartitionSearchRequest& request,
     SearchExecutionReservation reservation(shared);
     auto maximum = static_cast<uint32_t>(
         std::min({uint64_t(state.requested), groups, uint64_t(state.execution_limit)}));
+    if (not shared.pool or shared.pool->RequiresInlineExecution()) {
+        maximum = 1;
+    }
     auto& lease = state.lease;
     const auto* provider =
         state.user_filter ? dynamic_cast<const ConcurrentFilterProvider*>(state.user_filter.get())
                           : nullptr;
     const bool independent_filters = not state.user_filter or provider != nullptr;
     CHECK_ARGUMENT(independent_filters, "SINDI parallel search requires independent filters");
-    for (;;) {
-        if (state.user_filter) {
-            lease = provider->TryLease(maximum);
-            const bool valid_filter_lease = lease != nullptr and not lease->evaluators.empty() and
-                                            lease->evaluators.size() <= maximum;
-            CHECK_ARGUMENT(valid_filter_lease, "SINDI parallel filter resources unavailable");
-            maximum = static_cast<uint32_t>(lease->evaluators.size());
-            if (state.filter_slots == 0) {
-                state.filter_slots = maximum;
+    {
+        QueryProfileTimer admission_timer(profile_search ? &diagnostics->admission_ns : nullptr);
+        for (;;) {
+            if (state.user_filter) {
+                lease = provider->TryLease(maximum);
+                const bool valid_filter_lease =
+                    lease != nullptr and not lease->evaluators.empty() and
+                    lease->evaluators.size() <= maximum;
+                CHECK_ARGUMENT(valid_filter_lease, "SINDI parallel filter resources unavailable");
+                maximum = static_cast<uint32_t>(lease->evaluators.size());
+                if (state.filter_slots == 0) {
+                    state.filter_slots = maximum;
+                }
             }
+            reservation.extra = shared.TryReserve(maximum - 1);
+            state.granted = reservation.extra + 1;
+            if (state.granted == maximum or not lease) {
+                break;
+            }
+            maximum = state.granted;
+            {
+                std::lock_guard<std::mutex> guard(shared.mutex);
+                shared.busy -= reservation.extra;
+                reservation.extra = 0;
+            }
+            lease.reset();
         }
-        reservation.extra = shared.TryReserve(maximum - 1);
-        state.granted = reservation.extra + 1;
-        if (state.granted == maximum or not lease) {
-            break;
-        }
-        maximum = state.granted;
-        {
-            std::lock_guard<std::mutex> guard(shared.mutex);
-            shared.busy -= reservation.extra;
-            reservation.extra = 0;
-        }
-        lease.reset();
+    }
+    if (diagnostics != nullptr) {
+        diagnostics->slots.resize(state.granted);
+        diagnostics->partitions.resize(groups);
     }
     std::vector<std::unique_ptr<Slot>> slots;
-    for (uint32_t i = 0; i < state.granted; ++i) {
-        FilterPtr filter;
-        if (lease) {
-            CHECK_ARGUMENT(lease->evaluators[i] != nullptr, "null parallel evaluator");
-            filter = std::make_shared<BudgetedFilter>(lease->evaluators[i], state);
+    {
+        QueryProfileTimer prepare_timer(profile_search ? &diagnostics->slot_prepare_ns : nullptr);
+        for (uint32_t i = 0; i < state.granted; ++i) {
+            FilterPtr filter;
+            if (lease) {
+                CHECK_ARGUMENT(lease->evaluators[i] != nullptr, "null parallel evaluator");
+                filter = std::make_shared<BudgetedFilter>(
+                    lease->evaluators[i], state,
+                    diagnostics != nullptr ? &diagnostics->slots[i] : nullptr, profile_search);
+            }
+            slots.emplace_back(std::make_unique<Slot>(request, state.map_filter(filter)));
+            slots.back()->context.profile_work = profile_search;
         }
-        slots.emplace_back(std::make_unique<Slot>(request, state.map_filter(filter)));
     }
     auto heap_allocator = SafeAllocator::FactoryDefaultAllocator();
     std::vector<Partition> partitions;
@@ -303,50 +338,90 @@ SearchSindiPartitions(const SindiPartitionSearchRequest& request,
                     ready.pop_front();
                 }
                 auto& part = partitions[shard];
-                auto param = request.search;
-                param.ef = part.capacity;
-                param.scan_cancelled = [&state, checks = uint32_t{0}]() mutable {
-                    // Callback stop is exact; amortize deadline clock reads.
-                    return (++checks % 32 == 0) ? state.Stopped()
-                                                : state.stop.load(std::memory_order_relaxed) !=
-                                                      SindiParallelState::Stop::NONE;
-                };
-                param.is_inner_id_allowed = slot.filter;
-                const auto end = std::min(part.end, part.cursor + 4);
-                while (part.cursor < end and not state.Stopped()) {
-                    const auto window = request.windows[part.cursor];
-                    const auto offset = window * request.window_size;
-                    slot.computer->SetTermPruneEnabled(
-                        not request.metadata_filter.RequiresFullTermScan(
-                            request.route, window, request.window_size));
-                    request.datacell->QueryWindow(slot.dists.data(),
-                                                  window,
-                                                  slot.computer,
-                                                  request.use_term_lists,
-                                                  slot.context);
-                    if (request.use_term_lists) {
-                        request.datacell->InsertHeapByWindow(slot.dists.data(),
-                                                             window,
-                                                             slot.computer,
-                                                             part.heap,
-                                                             param,
-                                                             offset,
-                                                             KNN_SEARCH,
-                                                             slot.filter != nullptr,
-                                                             slot.context);
-                    } else {
-                        const auto docs = static_cast<uint32_t>(
-                            std::min(request.window_size, request.element_count - offset));
-                        request.datacell->InsertHeapByDists(slot.dists.data(),
-                                                            docs,
-                                                            part.heap,
-                                                            param,
-                                                            offset,
-                                                            KNN_SEARCH,
-                                                            slot.filter != nullptr);
+                {
+                    // Finish all writes, including the timer destructor, before
+                    // publishing this partition to another execution slot.
+                    auto* part_stats =
+                        diagnostics != nullptr ? &diagnostics->partitions[shard] : nullptr;
+                    auto* slot_stats = diagnostics != nullptr ? &diagnostics->slots[id] : nullptr;
+                    QueryProfileTimer part_timer(profile_search ? &part_stats->wall_ns : nullptr);
+                    auto param = request.search;
+                    param.ef = part.capacity;
+                    param.scan_cancelled = [&state, checks = uint32_t{0}]() mutable {
+                        // Callback stop is exact; amortize deadline clock reads.
+                        return (++checks % 32 == 0) ? state.Stopped()
+                                                    : state.stop.load(std::memory_order_relaxed) !=
+                                                          SindiParallelState::Stop::NONE;
+                    };
+                    param.is_inner_id_allowed = slot.filter;
+                    const auto end = std::min(part.end, part.cursor + 4);
+                    while (part.cursor < end and not state.Stopped()) {
+                        const auto window = request.windows[part.cursor];
+                        const auto offset = window * request.window_size;
+                        slot.computer->SetTermPruneEnabled(
+                            not request.term_prune_enabled or request.term_prune_enabled(window));
+                        if (state.clear_window_scratch) {
+                            QueryProfileTimer clear_timer(
+                                profile_search ? &slot_stats->clear_ns : nullptr);
+                            std::fill(slot.dists.begin(), slot.dists.end(), 0.0F);
+                        }
+                        if (profile_search) {
+                            slot.context.scanned_postings = 0;
+                        }
+                        const auto compute_before = profile_search ? slot_stats->compute_ns : 0;
+                        {
+                            QueryProfileTimer compute_timer(
+                                profile_search ? &slot_stats->compute_ns : nullptr);
+                            request.datacell->QueryWindow(slot.dists.data(), window, slot.computer,
+                                                          request.use_term_lists, slot.context);
+                        }
+                        if (profile_search) {
+                            const auto elapsed = slot_stats->compute_ns - compute_before;
+                            slot_stats->postings += slot.context.scanned_postings;
+                            const std::array<uint64_t, 5> limits{50000, 200000, 1000000,
+                                                                5000000, 20000000};
+                            uint64_t bucket = 0;
+                            while (bucket < limits.size() and elapsed >= limits[bucket]) ++bucket;
+                            ++slot_stats->histogram[bucket];
+                            if (elapsed >= slot_stats->compute_max_ns) {
+                                slot_stats->compute_max_ns = elapsed;
+                                slot_stats->slowest_window = window;
+                                slot_stats->slowest_postings = slot.context.scanned_postings;
+                            }
+                        }
+                        if (slot_stats != nullptr) {
+                            ++slot_stats->computed;
+                            ++slot_stats->attempted;
+                        }
+                        bool stopped;
+                        {
+                            QueryProfileTimer consume_timer(
+                                profile_search ? &slot_stats->consume_ns : nullptr);
+                            if (request.use_term_lists) {
+                                stopped = request.datacell->InsertHeapByWindow(
+                                    slot.dists.data(), window, slot.computer, part.heap, param,
+                                    offset, KNN_SEARCH, slot.filter != nullptr, slot.context);
+                            } else {
+                                const auto docs = static_cast<uint32_t>(
+                                    std::min(request.window_size, request.element_count - offset));
+                                stopped = request.datacell->InsertHeapByDists(
+                                    slot.dists.data(), docs, part.heap, param, offset,
+                                    KNN_SEARCH, slot.filter != nullptr);
+                            }
+                        }
+                        if (part_stats != nullptr) {
+                            part_stats->candidates = part.heap.size();
+                        }
+                        if (stopped) {
+                            break;
+                        }
+                        if (slot_stats != nullptr) {
+                            ++slot_stats->consumed;
+                            ++part_stats->windows;
+                        }
+                        ++part.cursor;
+                        state.completed_windows.fetch_add(1, std::memory_order_relaxed);
                     }
-                    ++part.cursor;
-                    state.completed_windows.fetch_add(1, std::memory_order_relaxed);
                 }
                 if (part.cursor < part.end and not state.Stopped()) {
                     std::lock_guard<std::mutex> lock(queue_mutex);
@@ -370,6 +445,8 @@ SearchSindiPartitions(const SindiPartitionSearchRequest& request,
         state.RequestStop(SindiParallelState::Stop::ERROR);
         failure = std::current_exception();
     }
+    const auto wait_start = profile_search ? SindiParallelState::Clock::now()
+                                           : SindiParallelState::Clock::time_point{};
     for (auto& future : futures) {
         try {
             future.get();
@@ -379,8 +456,9 @@ SearchSindiPartitions(const SindiPartitionSearchRequest& request,
             }
         }
     }
-    if (failure) {
-        std::rethrow_exception(failure);
+    if (profile_search) {
+        diagnostics->wait_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            SindiParallelState::Clock::now() - wait_start).count();
     }
     for (uint32_t i = 0; i < state.granted; ++i) {
         if (request.statistics != nullptr and
@@ -392,10 +470,26 @@ SearchSindiPartitions(const SindiPartitionSearchRequest& request,
             state.worker_cpu_ns += slots[i]->cpu.nanoseconds;
         }
     }
+    if (diagnostics != nullptr) {
+        for (uint64_t i = 0; i < groups; ++i) {
+            diagnostics->partitions[i].candidates = partitions[i].heap.size();
+        }
+    }
+    if (failure) {
+        state.stop.store(SindiParallelState::Stop::ERROR, std::memory_order_relaxed);
+        std::rethrow_exception(failure);
+    }
     if (SindiParallelState::Clock::now() >= state.deadline) {
+        // Workers have drained and original exceptions were handled above.
+        // The final timeout classification takes precedence over callback stop.
+        state.stop.store(SindiParallelState::Stop::DEADLINE, std::memory_order_relaxed);
+        if (request.statistics != nullptr) {
+            request.statistics->is_timeout.store(true, std::memory_order_relaxed);
+        }
         throw VsagException(ErrorType::INTERNAL_ERROR,
                             "SINDI parallel search deadline exceeded after drain");
     }
+    QueryProfileTimer merge_timer(profile_search ? &diagnostics->merge_ns : nullptr);
     SindiCandidateHeap merged(CompareByFirst{true}, Vector<SindiCandidate>(request.allocator));
     for (auto& part : partitions) {
         while (not part.heap.empty()) {

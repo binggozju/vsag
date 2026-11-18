@@ -132,10 +132,12 @@ Search parameters live under `{"sindi_v2": {...}}`.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `n_candidate` | int | `0` | Coarse candidate count; `0` uses the index default derived from `topk`. |
-| `window_parallelism` | integer | `1` | Requested distance-computation slots, including the caller; `[1,16]`. Eligible immutable in-memory KNN searches use bounded ordered batches when query resources are injected. |
-| `profile_search` | bool | `false` | Collect phase wall times, window work, batch summaries and logical rerank reads. |
-| `diagnose_search` | bool | `false` | Collect ordered window-distance, candidate and result digests for controlled consistency comparisons. Hashes are diagnostic evidence, not proof of equality. |
-| `profile_cpu` | bool | `false` | Sample caller and window-computation thread CPU time; unavailable clocks are explicitly marked. |
+| `window_parallelism` | integer | `1` | Requested execution slots including the caller, `[1,16]`; eligible immutable in-memory KNN partitions compute, filter and collect candidates independently. |
+| `parallel_n_candidate_ratio` | number | `2` | Total local capacity multiplier R (finite, >=1); merged rerank candidates remain bounded by N. |
+| `partition_policy` | string | `fixed` | `fixed` / `dynamic` |
+| `profile_search` | bool | `false` | Collect partition phases, cumulative work and logical rerank reads. |
+| `diagnose_search` | bool | `false` | Collect bounded candidate and result digests for controlled quality comparisons. Hashes are diagnostic evidence, not proof of equality. |
+| `profile_cpu` | bool | `false` | Sample caller and background-worker CPU time; unavailable clocks are explicitly marked. |
 | `filter_callback_limit` | uint64 | `0` | Maximum user `Filter::CheckValid` callback invocations for one filtered search. `0` disables the limit. Reaching a positive limit stops candidate and window scanning after processing the final callback result and returns the candidates accepted so far, so the result may be partial. The limit applies to the regular KNN and range-search APIs. |
 | `query_prune_ratio` | float | `0.0` | Fraction of the lowest-weight query terms skipped (`[0.0, 1.0)`). |
 | `term_prune_ratio` | float | `0.0` | Fraction of the lowest stored values skipped in each term list (`[0.0, 1.0)`). |
@@ -149,41 +151,34 @@ SINDI V2 chooses the heap-insertion strategy automatically from the build-time
 threshold, it uses distance-array insertion when both ratios are `<= 0.1`; if
 either ratio is greater than `0.1`, it uses term-list heap insertion.
 
-### Ordered parallel KNN
+### Partitioned parallel KNN
 
-Inject a shared `SearchResource` through `Engine` before creating/loading the index, then request
-`{"sindi_v2":{"window_parallelism":4}}`. VSAG does not create a pool in a query. P1, missing
-resources, mutable/file-backed postings, range and reasoning searches retain serial execution.
-Admission may grant fewer slots; eligible requests with resources remain ordered batches even
-when only the calling slot is available. The shared resource bounds background concurrency.
+Inject a shared `SearchResource` through `Engine` before index creation/loading. Request
+`{"sindi_v2":{"window_parallelism":4,"parallel_n_candidate_ratio":2,"partition_policy":"fixed"}}`.
+P1, missing resources, mutable/file postings, range and reasoning retain serial execution.
+An eligible search with only one granted slot retains its partition plan and deadline.
 
-Each batch computes independent window distances, joins all submitted tasks, then consumes
-windows in the original order on the caller. The original Filter, callback budget, global candidate
-heap and reranking are reused. There is no local candidate quota; `parallel_n_candidate_ratio`
-is rejected. For completed searches with stable Filters this preserves serial scoring, candidate
-ordering and tie handling. A callback limit still returns the same accepted prefix; speculative
-windows may have been computed but never invoke the Filter.
+Each partition has a local candidate heap. Persistent slots compute distances, evaluate independent
+Filters and update those heaps; the caller merges at most N candidates and runs the original rerank.
+A non-null parallel Filter must implement `ConcurrentFilterProvider`; a serial fallback leases one
+evaluator. Ordinary filters are not made parallel by a global lock.
 
-Parallel deadlines begin before acquiring the index read lock and are checked between batches,
-window consumptions, reranking and result publication. Submitted tasks drain before an error
-escapes. Cancellation is cooperative; a running window or I/O call is not interrupted. Deadline
-expiration returns an error. P1 retains its existing partial-result timeout behavior.
+Let C=ceil(R*N), W be routed windows, K_plan=K (N for a distance threshold). The default `fixed`
+plan has G=min(16,W,floor(C/K_plan)); experimental `dynamic` uses P instead of 16. Quotas sum to C.
+Dynamic uses the validated request P, not transient granted slots. Slot admission does not change G
+or quotas. Local truncation and pruning may change results,
+including ties; serial approximate output is a comparator, not ground truth. Application adapters
+may require explicit permission for the experimental selector. P1 does not apply R or partitions.
 
-Dataset statistics include `sindi_v2_strategy`, `fallback`, `stop_reason`, requested/granted slots,
-computed/consumed windows, batches and candidates (all latter names have the `sindi_v2_` prefix).
-`sindi_v2_execution_complete` describes scan termination; the existing `complete` describes
-distance-counter coverage and is a different property.
+Parallel deadlines cover lock wait, preparation, partition work, merge, rerank and publication.
+Cancellation is cooperative. Submitted tasks drain before errors escape. Callback permits are
+shared across partitions for one invocation; reaching the limit can return partial candidates.
 
-With `profile_search`, prepare, batch wall, ordered consume, rerank, output and residual `other`
-times are disjoint. Caller compute and join wait are subsets of batch wall; summed worker elapsed
-and CPU times must not be added to wall time. Window compute buckets are `[0,50)`, `[50,200)`,
-`[200,1000)`, `[1000,5000)`, `[5000,20000)`, `[20000,+inf)` microseconds. The slowest window
-includes its posting count; the slowest batch includes its first/last windows, width and join wait.
-Rerank read time measures backend calls, and bytes/ranges are logical requests, not physical disk
-traffic or cache hits. Those physical metrics are unavailable. `diagnose_search` hashes consumed
-window distances, the pre-rerank heap and ordered final results without logging their payloads.
-All three profiling switches are independent and disabled by default; use the same settings in
-P1/P2/P4 measurements and an A/A comparison to quantify collection overhead.
+`profile_search` reports partition wall time, cumulative compute/consume/clear/filter time,
+join wait, merge and rerank read/compute. Cumulative times overlap wall time and must not be added.
+`profile_cpu` reports caller and background-worker CPU. `diagnose_search` hashes bounded candidates
+and results, never full window scratch arrays. All diagnostics default off. `execution_complete`
+tracks scan termination; the original `complete` only describes distance-count coverage.
 
 ## Choosing between SINDI and SINDI_V2
 

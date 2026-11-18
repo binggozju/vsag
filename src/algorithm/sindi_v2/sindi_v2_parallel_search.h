@@ -11,7 +11,8 @@
 #include <memory>
 #include <string>
 
-#include "algorithm/sindi/sindi_cpu_timer.h"
+#include "impl/searcher/sindi_cpu_timer.h"
+#include "impl/searcher/sindi_parallel_search.h"
 #include "algorithm/sindi_v2/sindi_v2_parameter.h"
 #include "datacell/sindi_search_term_datacell.h"
 #include "query_context.h"
@@ -26,11 +27,33 @@ struct SindiV2SearchProfile {
     bool diagnose{false};
     bool profile_cpu{false};
     SindiCpuTime caller_cpu;
-    uint64_t compute_cpu_ns{0};
-    bool compute_cpu_complete{true};
+    uint64_t worker_cpu_ns{0};
+    bool worker_cpu_available{true};
     bool parallel{false};
     uint32_t requested{1};
     uint32_t granted{1};
+    const char* partition_policy{"fixed"};
+    double candidate_ratio{2};
+    uint64_t partitions{0};
+    uint64_t capacity{0};
+    uint64_t effective_candidates{0};
+    uint64_t filter_slots{0};
+    uint64_t attempted_windows{0};
+    uint64_t clear_ns{0};
+    uint64_t filter_ns{0};
+    uint64_t filter_calls{0};
+    uint64_t admission_ns{0};
+    uint64_t slot_prepare_ns{0};
+    uint64_t routed_windows{0};
+    uint64_t route_digest{14695981039346656037ULL};
+    std::array<uint64_t, 17> boundaries{};
+    uint64_t merge_ns{0};
+    uint64_t scratch_bytes{0};
+    std::array<uint64_t, 16> quotas{};
+    std::array<SindiPartitionStatistics, 16> partition_statistics{};
+
+    void
+    CapturePartitions(const SindiParallelState& state) noexcept;
     const char* fallback{"disabled"};
     const char* stop{"complete"};
     Clock::time_point start{Clock::now()};
@@ -44,52 +67,29 @@ struct SindiV2SearchProfile {
     std::array<uint64_t, 6> compute_histogram{};
     uint32_t slowest_window{0};
     uint64_t slowest_window_postings{0};
-    uint64_t slowest_batch_ns{0};
-    uint64_t slowest_batch_wait_ns{0};
-    uint32_t slowest_batch_first{0};
-    uint32_t slowest_batch_last{0};
-    uint32_t slowest_batch_width{0};
     uint64_t consume_ns{0};
     uint64_t rerank_ns{0};
     uint64_t output_ns{0};
-    uint64_t batches{0};
     uint64_t computed_windows{0};
     uint64_t consumed_windows{0};
     uint64_t candidate_count{0};
     uint64_t query_terms{0};
     uint64_t scan_postings{0};
     bool scan_postings_available{false};
-    uint64_t window_digest{14695981039346656037ULL};
     uint64_t candidate_digest{14695981039346656037ULL};
     uint64_t result_digest{14695981039346656037ULL};
     SparseQueryProfile rerank;
 
     void
-    CheckDeadline() const;
+    CheckDeadline();
     void
     RecordCompute(uint32_t window, uint64_t elapsed_ns, uint64_t postings);
     std::string
     Dump(const SearchStatistics& statistics) const;
     void
-    DigestWindow(uint32_t window, const Vector<float>& dists);
-    void
     DigestCandidates(const MaxHeap& heap);
     void
     DigestResults(const DatasetPtr& result);
-};
-
-struct SindiV2WindowSlot {
-    SindiV2WindowSlot(const SparseTermComputerPtr& query, uint32_t window_size);
-    std::shared_ptr<Allocator> allocator;
-    SparseTermComputerPtr computer;
-    Vector<float> dists;
-    SindiQueryContext context;
-    uint32_t window{0};
-    bool prune{true};
-    std::exception_ptr error;
-    bool started{false};
-    uint64_t compute_ns{0};
-    SindiCpuTime cpu;
 };
 
 SindiV2SearchProfile
@@ -110,20 +110,5 @@ private:
     SearchStatistics& statistics_;
     int exceptions_;
 };
-
-// next() chooses windows on the calling thread. consume() alone touches filters
-// and the global heap, in that same order. False ends the successful prefix.
-// slot_limit bounds requested slots by the remaining window span and is nonzero.
-void
-search_sindi_v2_batches(SearchExecutionContext& resources,
-                        const SindiSearchTermDataCellPtr& datacell,
-                        const SparseTermComputerPtr& computer,
-                        uint32_t window_size,
-                        uint32_t slot_limit,
-                        bool use_term_lists,
-                        const std::function<bool(uint32_t&, bool&)>& next,
-                        const std::function<bool(SindiV2WindowSlot&)>& consume,
-                        SindiV2SearchProfile& profile,
-                        SearchStatistics* statistics);
 
 }  // namespace vsag
