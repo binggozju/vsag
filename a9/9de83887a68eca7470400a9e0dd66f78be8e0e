@@ -1,0 +1,45 @@
+docs/docs/en/src/indexes/sindi_v2.md
+  s_f37ee119f37e39::t_aacd45dd0aa7d9 135-140,154-181
+docs/docs/zh/src/indexes/sindi_v2.md
+  s_f37ee119f37e39::t_9f5260bc788190 129-131,133-134,146-166
+src/algorithm/sindi/sindi.cpp
+  s_f37ee119f37e39::t_e1a7433b1a202d 41-42,959-972
+src/algorithm/sindi/sindi_parallel_search_test.cpp
+  s_f37ee119f37e39::t_ef1cd405632384 4,34
+src/algorithm/sindi_v2/sindi_v2.cpp
+  s_f37ee119f37e39::t_e937739e99a54f 59-69,937-972,993-995,1015-1016,1024,1158-1163,1166-1170,1172-1190,1412-1413,1421-1422,1587-1591,1593,1624
+src/algorithm/sindi_v2/sindi_v2.h
+  s_f37ee119f37e39::t_0fe0b15096f829 164-165
+src/algorithm/sindi_v2/sindi_v2_parallel_search.cpp
+  s_f37ee119f37e39::t_9df77d4467b676 36-37,56,58,84,127-177,184,190-213,220,222,227,232-242,256,262-263
+src/algorithm/sindi_v2/sindi_v2_parallel_search.h
+  s_f37ee119f37e39::t_91fe596f118f58 14-15,30-31,35-56,84
+src/algorithm/sindi_v2/sindi_v2_parallel_search_test.cpp
+  s_f37ee119f37e39::t_a33be760ddf1a1 7-9,11,13,16,19,21,31-61,63-65,67-79,81,83-86,99,116,126-127,134,146-148,150,152-162,164-173,178-219,224,241,246-250,263,292-293,324,336-341,345-346,351-577
+src/algorithm/sindi_v2/sindi_v2_parameter.cpp
+  s_f37ee119f37e39::t_3e1a4088e2ddc3 18-19,380-390,465-466
+src/algorithm/sindi_v2/sindi_v2_parameter.h
+  s_f37ee119f37e39::t_76caea2b2c71f1 95-96
+src/impl/searcher/CMakeLists.txt
+  s_f37ee119f37e39::t_442e8bcd97b79b 28-30
+src/impl/searcher/sindi_parallel_search.cpp
+  s_f37ee119f37e39::t_75e7f6ccb94024 42-45,57-63,76-77,173-177,196-197,243-244,246-247,258-260,267-279,281-292,294-297,300-311,341-423,448-449,459-461,473-481,483-488,492
+src/impl/searcher/sindi_parallel_search.h
+  s_f37ee119f37e39::t_f32a9a7e2a67fa 6,16,48-50,60-61,69-102,120-125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a99de83887a68eca7470400a9e0dd66f78be8e0e",
+  "prompts": {},
+  "sessions": {
+    "s_f37ee119f37e39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1e3b3-f61e-70a3-b5a6-26dd0876bf72",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "binggozju <binggozhan@163.com>"
+    }
+  }
+}
