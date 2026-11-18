@@ -16,11 +16,11 @@
 #include <utility>
 #include <vector>
 
-#include "impl/searcher/sindi_parallel_search.h"
 #include "algorithm/sindi_v2/sindi_v2.h"
 #include "datacell/immutable_sindi_term_datacell.h"
 #include "impl/allocator/safe_allocator.h"
 #include "impl/searcher/search_execution_context.h"
+#include "impl/searcher/sindi_parallel_search.h"
 #include "io/memory_block_io/memory_block_io_parameter.h"
 #include "io/memory_io/memory_io_parameter.h"
 #include "unittest.h"
@@ -38,19 +38,25 @@ public:
     PredicateFilter(std::shared_ptr<FilterCounters> counters,
                     bool fail = false,
                     std::function<bool(int64_t)> predicate = {})
-        : counters_(std::move(counters)), fail_(fail), predicate_(std::move(predicate)) {}
-    bool CheckValid(int64_t id) const override {
+        : counters_(std::move(counters)), fail_(fail), predicate_(std::move(predicate)) {
+    }
+    bool
+    CheckValid(int64_t id) const override {
         if (entered_.exchange(true)) {
             throw std::logic_error("one evaluator entered concurrently");
         }
         struct Reset {
             std::atomic<bool>& entered;
-            ~Reset() { entered.store(false); }
+            ~Reset() {
+                entered.store(false);
+            }
         } reset{entered_};
         ++counters_->calls;
-        if (fail_) throw std::runtime_error("injected filter failure");
+        if (fail_)
+            throw std::runtime_error("injected filter failure");
         return predicate_ ? predicate_(id) : id % 3 != 0;
     }
+
 private:
     std::shared_ptr<FilterCounters> counters_;
     bool fail_;
@@ -60,17 +66,22 @@ private:
 
 class IndependentFilter final : public Filter, public ConcurrentFilterProvider {
 public:
-    explicit IndependentFilter(bool fail = false) : fail_(fail) {}
-    bool CheckValid(int64_t) const override {
+    explicit IndependentFilter(bool fail = false) : fail_(fail) {
+    }
+    bool
+    CheckValid(int64_t) const override {
         throw std::logic_error("provider must lease an evaluator");
     }
-    std::unique_ptr<ConcurrentFilterLease> TryLease(uint32_t maximum) const override {
+    std::unique_ptr<ConcurrentFilterLease>
+    TryLease(uint32_t maximum) const override {
         struct Lease final : ConcurrentFilterLease {
             explicit Lease(std::shared_ptr<FilterCounters> counters)
                 : counters(std::move(counters)) {
                 ++this->counters->leases;
             }
-            ~Lease() override { --counters->leases; }
+            ~Lease() override {
+                --counters->leases;
+            }
             std::shared_ptr<FilterCounters> counters;
         };
         auto lease = std::make_unique<Lease>(counters);
@@ -82,6 +93,7 @@ public:
     }
     std::shared_ptr<FilterCounters> counters{std::make_shared<FilterCounters>()};
     std::function<bool(int64_t)> predicate;
+
 private:
     bool fail_;
 };
@@ -147,7 +159,8 @@ TEST_CASE("SINDIV2 partitions preserve scores when every local candidate fits",
         return fmt::format(R"({{"sindi_v2":{{"window_parallelism":{},"n_candidate":37,
             "query_prune_ratio":0,"term_prune_ratio":0,"term_retain_threshold":0,
             "filter_callback_limit":{},"profile_search":true,"diagnose_search":true}}}})",
-                           p, budget);
+                           p,
+                           budget);
     };
     // Each local quota exceeds its window's document count, so this fixture
     // has no local truncation. Exact comparisons here do not assert that pruned
@@ -164,8 +177,10 @@ TEST_CASE("SINDIV2 partitions preserve scores when every local candidate fits",
             REQUIRE(parallel->GetStatistics({"sindi_v2_strategy"})[0] == "\"partition_search\"");
             REQUIRE(parallel->GetStatistics({"sindi_v2_execution_complete"})[0] == "true");
             const auto plan_stats = parallel->GetStatistics({"sindi_v2_partitions",
-                "sindi_v2_candidate_capacity", "sindi_v2_n_candidate",
-                "sindi_v2_routed_windows", "sindi_v2_windows_consumed"});
+                                                             "sindi_v2_candidate_capacity",
+                                                             "sindi_v2_n_candidate",
+                                                             "sindi_v2_routed_windows",
+                                                             "sindi_v2_windows_consumed"});
             REQUIRE(std::stoull(plan_stats[0]) == (std::string(policy) == "fixed" ? 8 : p));
             REQUIRE(std::stoull(plan_stats[1]) == 74);
             REQUIRE(std::stoull(plan_stats[2]) == 37);
@@ -181,16 +196,19 @@ TEST_CASE("SINDIV2 partitions preserve scores when every local candidate fits",
         options["sindi_v2"]["diagnose_search"].SetBool(false);
         const auto result = index.KnnSearch(query, 5, options.Dump(), nullptr);
         SameResults(result, index.KnnSearch(query, 5, request(1, 0), nullptr));
-        const auto stats = result->GetStatistics({"sindi_v2_profile_enabled",
-            "sindi_v2_windows_computed", "sindi_v2_windows_consumed"});
+        const auto stats = result->GetStatistics(
+            {"sindi_v2_profile_enabled", "sindi_v2_windows_computed", "sindi_v2_windows_consumed"});
         REQUIRE(stats[0] == "false");
         REQUIRE(stats[1] == "8");
         REQUIRE(stats[2] == "8");
         REQUIRE(common.search_resources_->busy == 0);
     }
     SECTION("ordinary filters cannot silently stand in for independent evaluators") {
-        REQUIRE_THROWS(index.KnnSearch(query, 5, request(4, 0),
-            std::make_shared<PredicateFilter>(std::make_shared<FilterCounters>())));
+        REQUIRE_THROWS(
+            index.KnnSearch(query,
+                            5,
+                            request(4, 0),
+                            std::make_shared<PredicateFilter>(std::make_shared<FilterCounters>())));
         REQUIRE(common.search_resources_->busy == 0);
         REQUIRE(common.search_resources_->callers == 0);
     }
@@ -245,8 +263,12 @@ TEST_CASE("SINDIV2 partitions preserve scores when every local candidate fits",
         REQUIRE(serial_index.Build(base).empty());
         auto provider = std::make_shared<IndependentFilter>();
         const auto actual = serial_index.KnnSearch(query, 5, request(4, 0), provider);
-        SameResults(actual, serial_index.KnnSearch(query, 5, request(1, 0),
-            std::make_shared<PredicateFilter>(std::make_shared<FilterCounters>())));
+        SameResults(actual,
+                    serial_index.KnnSearch(
+                        query,
+                        5,
+                        request(1, 0),
+                        std::make_shared<PredicateFilter>(std::make_shared<FilterCounters>())));
         REQUIRE(provider->counters->leases.load() == 0);
         REQUIRE(actual->GetStatistics({"sindi_v2_fallback"})[0] == "\"no_resources\"");
     }
@@ -366,8 +388,8 @@ TEST_CASE("SINDI partition planners bound quotas independently of granted worker
 TEST_CASE("SINDIV2 pruned partitions keep known high scores across repeated queue handoffs",
           "[ut][SINDIV2][SINDIV2Parallel][SINDIV2PrunedPartitions]") {
     const auto quantization = GENERATE(SparseValueQuantizationType::FP32,
-                                      SparseValueQuantizationType::FP16,
-                                      SparseValueQuantizationType::SQ8);
+                                       SparseValueQuantizationType::FP16,
+                                       SparseValueQuantizationType::SQ8);
     const bool reorder = GENERATE(false, true);
     auto allocator = SafeAllocator::FactoryDefaultAllocator();
     IndexCommonParam common;
@@ -398,8 +420,11 @@ TEST_CASE("SINDIV2 pruned partitions keep known high scores across repeated queu
         vectors[i] = SparseVector{4, terms.data(), weights[i].data()};
         labels[i] = 1000 + i;
     }
-    auto base = Dataset::Make()->NumElements(count)->Ids(labels.data())
-        ->SparseVectors(vectors.data())->Owner(false);
+    auto base = Dataset::Make()
+                    ->NumElements(count)
+                    ->Ids(labels.data())
+                    ->SparseVectors(vectors.data())
+                    ->Owner(false);
     std::array<float, 4> query_weights{4, 2, 1, 0.25F};
     SparseVector sparse{4, terms.data(), query_weights.data()};
     auto query = Dataset::Make()->NumElements(1)->SparseVectors(&sparse)->Owner(false);
@@ -410,7 +435,9 @@ TEST_CASE("SINDIV2 pruned partitions keep known high scores across repeated queu
             "partition_policy":"{}","n_candidate":12,"query_prune_ratio":0.3,
             "term_prune_ratio":0.25,"term_retain_threshold":240,
             "filter_callback_limit":{},"profile_search":true,"diagnose_search":true}}}})",
-                           width, policy, budget);
+                           width,
+                           policy,
+                           budget);
     };
     // Optional build pruning drops term 4, leaving the two dominant terms intact.
     // Query pruning retains weights 4 and 2. Each term retains three of four
@@ -428,8 +455,8 @@ TEST_CASE("SINDIV2 pruned partitions keep known high scores across repeated queu
                 for (uint32_t i = 0; i < expected.size(); ++i) {
                     REQUIRE(result->GetIds()[i] == expected[i]);
                     unique.insert(result->GetIds()[i]);
-                    const float expected_distance = 1.0F -
-                        (reorder ? 7.25F : 6.0F) * static_cast<float>(expected[i] - 999);
+                    const float expected_distance =
+                        1.0F - (reorder ? 7.25F : 6.0F) * static_cast<float>(expected[i] - 999);
                     if (reorder or quantization != SparseValueQuantizationType::SQ8) {
                         REQUIRE(result->GetDistances()[i] == expected_distance);
                     } else {
@@ -439,9 +466,12 @@ TEST_CASE("SINDIV2 pruned partitions keep known high scores across repeated queu
                 }
                 REQUIRE(unique.size() == 4);
                 const auto stats = result->GetStatistics({"sindi_v2_partitions",
-                    "sindi_v2_windows_computed", "sindi_v2_windows_consumed",
-                    "sindi_v2_scanned_postings", "sindi_v2_granted_slots",
-                    "sindi_v2_execution_complete", "sindi_v2_candidates"});
+                                                          "sindi_v2_windows_computed",
+                                                          "sindi_v2_windows_consumed",
+                                                          "sindi_v2_scanned_postings",
+                                                          "sindi_v2_granted_slots",
+                                                          "sindi_v2_execution_complete",
+                                                          "sindi_v2_candidates"});
                 const uint32_t groups = std::string(policy) == "fixed" ? 6 : width;
                 REQUIRE(std::stoull(stats[0]) == groups);
                 REQUIRE(std::stoull(stats[1]) == 80);
@@ -455,7 +485,9 @@ TEST_CASE("SINDIV2 pruned partitions keep known high scores across repeated queu
                 for (uint32_t group = 0; group < groups; ++group) {
                     const auto prefix = "sindi_v2_partition_" + std::to_string(group);
                     const auto local = result->GetStatistics({prefix + "_windows",
-                        prefix + "_candidates", prefix + "_quota", prefix + "_work_us"});
+                                                              prefix + "_candidates",
+                                                              prefix + "_quota",
+                                                              prefix + "_work_us"});
                     REQUIRE(std::stoull(local[0]) > 4);
                     REQUIRE(local[1] == local[2]);
                     REQUIRE(std::stod(local[3]) > 0);
@@ -519,7 +551,8 @@ TEST_CASE("SINDIV2 final failure classification outranks callback stop after dra
     SindiParallelStatistics diagnostics;
     diagnostics.profile_search = collect_diagnostics;
     SindiParallelState state;
-    if (collect_diagnostics) state.diagnostics = &diagnostics;
+    if (collect_diagnostics)
+        state.diagnostics = &diagnostics;
     state.resources = std::make_shared<SearchExecutionContext>(0);
     state.requested = 2;
     state.callback_limit = 1;
@@ -531,7 +564,8 @@ TEST_CASE("SINDIV2 final failure classification outranks callback stop after dra
         // Model the final admitted callback crossing a deadline after a budget stop.
         state.RequestStop(SindiParallelState::Stop::CALLBACK_LIMIT);
         state.deadline = SindiParallelState::Clock::time_point::min();
-        if (original_error) throw std::runtime_error("original evaluator failure");
+        if (original_error)
+            throw std::runtime_error("original evaluator failure");
         return true;
     };
     state.user_filter = filter;
@@ -539,8 +573,8 @@ TEST_CASE("SINDIV2 final failure classification outranks callback stop after dra
     InnerSearchParam param;
     param.ef = param.topk = 1;
     SearchStatistics statistics;
-    SindiPartitionSearchRequest request{windows, cell, computer, param, {},
-        allocator.get(), 4, 1, terms, &statistics};
+    SindiPartitionSearchRequest request{
+        windows, cell, computer, param, {}, allocator.get(), 4, 1, terms, &statistics};
     MaxHeap heap(allocator.get());
     bool threw = false;
     try {
@@ -554,7 +588,7 @@ TEST_CASE("SINDIV2 final failure classification outranks callback stop after dra
     REQUIRE(threw);
     REQUIRE(filter->counters->calls.load() == 1);
     REQUIRE(state.stop.load() == (original_error ? SindiParallelState::Stop::ERROR
-                                              : SindiParallelState::Stop::DEADLINE));
+                                                 : SindiParallelState::Stop::DEADLINE));
     REQUIRE(statistics.is_timeout.load() == not original_error);
     SindiV2SearchProfile profile;
     profile.CapturePartitions(state);

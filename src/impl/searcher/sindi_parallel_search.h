@@ -57,7 +57,10 @@ struct SindiPartitionSearchRequest {
 
 struct SindiParallelPlan {
     static SindiParallelPlan
-    Make(uint64_t windows, uint64_t candidates, double ratio, uint64_t topk,
+    Make(uint64_t windows,
+         uint64_t candidates,
+         double ratio,
+         uint64_t topk,
          uint32_t group_limit = 16);
 
     uint64_t candidates{0};

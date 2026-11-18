@@ -39,9 +39,13 @@ resource_limit(const char* name, uint64_t fallback) {
 
 class BudgetedFilter final : public Filter {
 public:
-    BudgetedFilter(FilterPtr delegate, SindiParallelState& state,
-                   SindiSlotStatistics* stats, bool profile_search)
-        : delegate_(std::move(delegate)), state_(state), stats_(stats),
+    BudgetedFilter(FilterPtr delegate,
+                   SindiParallelState& state,
+                   SindiSlotStatistics* stats,
+                   bool profile_search)
+        : delegate_(std::move(delegate)),
+          state_(state),
+          stats_(stats),
           profile_search_(profile_search) {
     }
     bool
@@ -170,11 +174,8 @@ SindiExecutionStatistics(JsonType&& json,
 }
 
 SindiParallelPlan
-SindiParallelPlan::Make(uint64_t windows,
-                        uint64_t candidates,
-                        double ratio,
-                        uint64_t topk,
-                        uint32_t group_limit) {
+SindiParallelPlan::Make(
+    uint64_t windows, uint64_t candidates, double ratio, uint64_t topk, uint32_t group_limit) {
     uint64_t ratio_bits = 0;
     std::memcpy(&ratio_bits, &ratio, sizeof(ratio_bits));
     const bool valid_candidate_budget =
@@ -243,8 +244,11 @@ SearchSindiPartitions(const SindiPartitionSearchRequest& request,
     auto* diagnostics = state.diagnostics;
     const bool profile_search = diagnostics != nullptr and diagnostics->profile_search;
     state.plan = SindiParallelPlan::Make(
-        request.windows.size(), request.search.ef, state.ratio,
-        state.planning_topk != 0 ? state.planning_topk : request.search.topk, state.group_limit);
+        request.windows.size(),
+        request.search.ef,
+        state.ratio,
+        state.planning_topk != 0 ? state.planning_topk : request.search.topk,
+        state.group_limit);
     const uint64_t groups = state.plan.quotas.size();
     if (groups == 0) {
         return;
@@ -269,9 +273,9 @@ SearchSindiPartitions(const SindiPartitionSearchRequest& request,
         for (;;) {
             if (state.user_filter) {
                 lease = provider->TryLease(maximum);
-                const bool valid_filter_lease =
-                    lease != nullptr and not lease->evaluators.empty() and
-                    lease->evaluators.size() <= maximum;
+                const bool valid_filter_lease = lease != nullptr and
+                                                not lease->evaluators.empty() and
+                                                lease->evaluators.size() <= maximum;
                 CHECK_ARGUMENT(valid_filter_lease, "SINDI parallel filter resources unavailable");
                 maximum = static_cast<uint32_t>(lease->evaluators.size());
                 if (state.filter_slots == 0) {
@@ -304,8 +308,10 @@ SearchSindiPartitions(const SindiPartitionSearchRequest& request,
             if (lease) {
                 CHECK_ARGUMENT(lease->evaluators[i] != nullptr, "null parallel evaluator");
                 filter = std::make_shared<BudgetedFilter>(
-                    lease->evaluators[i], state,
-                    diagnostics != nullptr ? &diagnostics->slots[i] : nullptr, profile_search);
+                    lease->evaluators[i],
+                    state,
+                    diagnostics != nullptr ? &diagnostics->slots[i] : nullptr,
+                    profile_search);
             }
             slots.emplace_back(std::make_unique<Slot>(request, state.map_filter(filter)));
             slots.back()->context.profile_work = profile_search;
@@ -358,11 +364,11 @@ SearchSindiPartitions(const SindiPartitionSearchRequest& request,
                     while (part.cursor < end and not state.Stopped()) {
                         const auto window = request.windows[part.cursor];
                         const auto offset = window * request.window_size;
-                        slot.computer->SetTermPruneEnabled(
-                            not request.term_prune_enabled or request.term_prune_enabled(window));
+                        slot.computer->SetTermPruneEnabled(not request.term_prune_enabled or
+                                                           request.term_prune_enabled(window));
                         if (state.clear_window_scratch) {
-                            QueryProfileTimer clear_timer(
-                                profile_search ? &slot_stats->clear_ns : nullptr);
+                            QueryProfileTimer clear_timer(profile_search ? &slot_stats->clear_ns
+                                                                         : nullptr);
                             std::fill(slot.dists.begin(), slot.dists.end(), 0.0F);
                         }
                         if (profile_search) {
@@ -370,16 +376,19 @@ SearchSindiPartitions(const SindiPartitionSearchRequest& request,
                         }
                         const auto compute_before = profile_search ? slot_stats->compute_ns : 0;
                         {
-                            QueryProfileTimer compute_timer(
-                                profile_search ? &slot_stats->compute_ns : nullptr);
-                            request.datacell->QueryWindow(slot.dists.data(), window, slot.computer,
-                                                          request.use_term_lists, slot.context);
+                            QueryProfileTimer compute_timer(profile_search ? &slot_stats->compute_ns
+                                                                           : nullptr);
+                            request.datacell->QueryWindow(slot.dists.data(),
+                                                          window,
+                                                          slot.computer,
+                                                          request.use_term_lists,
+                                                          slot.context);
                         }
                         if (profile_search) {
                             const auto elapsed = slot_stats->compute_ns - compute_before;
                             slot_stats->postings += slot.context.scanned_postings;
-                            const std::array<uint64_t, 5> limits{50000, 200000, 1000000,
-                                                                5000000, 20000000};
+                            const std::array<uint64_t, 5> limits{
+                                50000, 200000, 1000000, 5000000, 20000000};
                             uint64_t bucket = 0;
                             while (bucket < limits.size() and elapsed >= limits[bucket]) ++bucket;
                             ++slot_stats->histogram[bucket];
@@ -395,18 +404,30 @@ SearchSindiPartitions(const SindiPartitionSearchRequest& request,
                         }
                         bool stopped;
                         {
-                            QueryProfileTimer consume_timer(
-                                profile_search ? &slot_stats->consume_ns : nullptr);
+                            QueryProfileTimer consume_timer(profile_search ? &slot_stats->consume_ns
+                                                                           : nullptr);
                             if (request.use_term_lists) {
-                                stopped = request.datacell->InsertHeapByWindow(
-                                    slot.dists.data(), window, slot.computer, part.heap, param,
-                                    offset, KNN_SEARCH, slot.filter != nullptr, slot.context);
+                                stopped =
+                                    request.datacell->InsertHeapByWindow(slot.dists.data(),
+                                                                         window,
+                                                                         slot.computer,
+                                                                         part.heap,
+                                                                         param,
+                                                                         offset,
+                                                                         KNN_SEARCH,
+                                                                         slot.filter != nullptr,
+                                                                         slot.context);
                             } else {
                                 const auto docs = static_cast<uint32_t>(
                                     std::min(request.window_size, request.element_count - offset));
-                                stopped = request.datacell->InsertHeapByDists(
-                                    slot.dists.data(), docs, part.heap, param, offset,
-                                    KNN_SEARCH, slot.filter != nullptr);
+                                stopped =
+                                    request.datacell->InsertHeapByDists(slot.dists.data(),
+                                                                        docs,
+                                                                        part.heap,
+                                                                        param,
+                                                                        offset,
+                                                                        KNN_SEARCH,
+                                                                        slot.filter != nullptr);
                             }
                         }
                         if (part_stats != nullptr) {
@@ -445,8 +466,8 @@ SearchSindiPartitions(const SindiPartitionSearchRequest& request,
         state.RequestStop(SindiParallelState::Stop::ERROR);
         failure = std::current_exception();
     }
-    const auto wait_start = profile_search ? SindiParallelState::Clock::now()
-                                           : SindiParallelState::Clock::time_point{};
+    const auto wait_start =
+        profile_search ? SindiParallelState::Clock::now() : SindiParallelState::Clock::time_point{};
     for (auto& future : futures) {
         try {
             future.get();
@@ -458,7 +479,8 @@ SearchSindiPartitions(const SindiPartitionSearchRequest& request,
     }
     if (profile_search) {
         diagnostics->wait_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                            SindiParallelState::Clock::now() - wait_start).count();
+                                   SindiParallelState::Clock::now() - wait_start)
+                                   .count();
     }
     for (uint32_t i = 0; i < state.granted; ++i) {
         if (request.statistics != nullptr and

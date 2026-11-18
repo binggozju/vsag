@@ -58,9 +58,10 @@ namespace {
 
 FilterPtr
 lease_serial_filter(const FilterPtr& filter, std::unique_ptr<ConcurrentFilterLease>& lease) {
-    const auto* provider = filter
-        ? dynamic_cast<const ConcurrentFilterProvider*>(filter.get()) : nullptr;
-    if (provider == nullptr) return filter;
+    const auto* provider =
+        filter ? dynamic_cast<const ConcurrentFilterProvider*>(filter.get()) : nullptr;
+    if (provider == nullptr)
+        return filter;
     lease = provider->TryLease(1);
     CHECK_ARGUMENT(lease and lease->evaluators.size() == 1 and lease->evaluators[0],
                    "SINDI_V2 serial filter evaluator unavailable");
@@ -938,16 +939,17 @@ SINDIV2::knn_search(const DatasetPtr& query,
     partition_diagnostics.profile_search = execution.enabled;
     SindiParallelState partition_state;
     partition_state.diagnostics = &partition_diagnostics;
-    const bool partition_eligible = search_param.window_parallelism > 1 and search_resources_ and
-        immutable_enabled_ and not computer->sorted_query_.empty() and
+    const bool partition_eligible =
+        search_param.window_parallelism > 1 and search_resources_ and immutable_enabled_ and
+        not computer->sorted_query_.empty() and
         std::dynamic_pointer_cast<ImmutableSindiTermDataCell>(term_datacell_) != nullptr;
     execution.parallel = partition_eligible;
     partition_state.resources = search_resources_;
     partition_state.user_filter = filter;
     partition_state.requested = search_param.window_parallelism;
     partition_state.ratio = search_param.parallel_n_candidate_ratio;
-    partition_state.group_limit = search_param.partition_policy == "dynamic"
-                                      ? search_param.window_parallelism : 16;
+    partition_state.group_limit =
+        search_param.partition_policy == "dynamic" ? search_param.window_parallelism : 16;
     partition_state.planning_topk = threshold.has_value() ? inner_param.ef : inner_param.topk;
     partition_state.callback_limit = search_param.filter_callback_limit;
     partition_state.deadline = execution.deadline;
@@ -967,8 +969,10 @@ SINDIV2::knn_search(const DatasetPtr& query,
     std::unique_ptr<ConcurrentFilterLease> serial_lease;
     const auto serial_filter =
         partition_eligible ? filter : lease_serial_filter(filter, serial_lease);
-    inner_param.is_inner_id_allowed = map_filter(partition_eligible ? filter :
-        create_filter_callback_limiter(serial_filter, filter_callback_remaining));
+    inner_param.is_inner_id_allowed =
+        map_filter(partition_eligible
+                       ? filter
+                       : create_filter_callback_limiter(serial_filter, filter_callback_remaining));
 
     SindiQueryContext query_context(search_allocator);
     auto query_term_ids = collect_query_term_ids(computer, search_allocator);
@@ -1156,14 +1160,17 @@ SINDIV2::search_impl(const SparseTermComputerPtr& computer,
         std::dynamic_pointer_cast<ImmutableSindiTermDataCell>(term_datacell_) != nullptr;
     profile.scan_postings_available = memory_postings;
     profile.parallel = parallel != nullptr;
-    profile.fallback = profile.parallel ? "none" : profile.requested == 1 ? "disabled"
-        : not search_resources_ ? "no_resources" : "unsupported_mode";
+    profile.fallback = profile.parallel         ? "none"
+                       : profile.requested == 1 ? "disabled"
+                       : not search_resources_  ? "no_resources"
+                                                : "unsupported_mode";
     if (parallel != nullptr) {
         std::vector<uint32_t> windows;
         for (auto cursor = min_window_id; cursor <= max_window_id;) {
             cursor = metadata_filter_.NextMatchingWindow(
                 metadata_route, window_size_, cursor, max_window_id);
-            if (cursor > max_window_id) break;
+            if (cursor > max_window_id)
+                break;
             const auto window = static_cast<uint32_t>(cursor++);
             windows.push_back(window);
             if (profile.diagnose) {
@@ -1171,12 +1178,19 @@ SINDIV2::search_impl(const SparseTermComputerPtr& computer,
             }
         }
         profile.routed_windows = windows.size();
-        SindiPartitionSearchRequest request{windows, term_datacell_, computer, inner_param,
-            [this, &metadata_route](uint32_t window) {
-                return not metadata_filter_.RequiresFullTermScan(
-                    metadata_route, window, window_size_);
-            }, allocator, window_size_,
-            static_cast<uint64_t>(cur_element_count_), use_term_lists_heap_insert, statistics};
+        SindiPartitionSearchRequest request{windows,
+                                            term_datacell_,
+                                            computer,
+                                            inner_param,
+                                            [this, &metadata_route](uint32_t window) {
+                                                return not metadata_filter_.RequiresFullTermScan(
+                                                    metadata_route, window, window_size_);
+                                            },
+                                            allocator,
+                                            window_size_,
+                                            static_cast<uint64_t>(cur_element_count_),
+                                            use_term_lists_heap_insert,
+                                            statistics};
         try {
             {
                 QueryProfileTimer timer(profile.enabled ? &profile.batch_ns : nullptr);

@@ -168,10 +168,17 @@ SindiV2SearchProfile::CapturePartitions(const SindiParallelState& state) noexcep
         }
     }
     switch (state.stop.load()) {
-        case SindiParallelState::Stop::CALLBACK_LIMIT: stop = "callback_limit"; break;
-        case SindiParallelState::Stop::ERROR: stop = "error"; break;
-        case SindiParallelState::Stop::DEADLINE: stop = "deadline"; break;
-        case SindiParallelState::Stop::NONE: break;
+        case SindiParallelState::Stop::CALLBACK_LIMIT:
+            stop = "callback_limit";
+            break;
+        case SindiParallelState::Stop::ERROR:
+            stop = "error";
+            break;
+        case SindiParallelState::Stop::DEADLINE:
+            stop = "deadline";
+            break;
+        case SindiParallelState::Stop::NONE:
+            break;
     }
 }
 
@@ -230,7 +237,8 @@ SindiV2SearchProfile::Dump(const SearchStatistics& statistics) const {
     if (enabled) {
         us("sindi_v2_prepare_us", prepare_ns);
         us(parallel ? "sindi_v2_partition_wall_us" : "sindi_v2_batch_wall_us", batch_ns);
-        if (!parallel) us("sindi_v2_caller_compute_us", caller_compute_ns);
+        if (!parallel)
+            us("sindi_v2_caller_compute_us", caller_compute_ns);
         if (parallel) {
             us("sindi_v2_clear_sum_us", clear_ns);
             us("sindi_v2_filter_sum_us", filter_ns);
@@ -259,8 +267,8 @@ SindiV2SearchProfile::Dump(const SearchStatistics& statistics) const {
         const auto total = static_cast<uint64_t>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - start).count());
         us("sindi_v2_total_us", total);
-        const auto accounted = prepare_ns + batch_ns + (parallel ? 0 : consume_ns) +
-                               rerank_ns + output_ns;
+        const auto accounted =
+            prepare_ns + batch_ns + (parallel ? 0 : consume_ns) + rerank_ns + output_ns;
         us("sindi_v2_other_us", total > accounted ? total - accounted : 0);
         us("sindi_v2_rerank_read_us", rerank.read_ns);
         us("sindi_v2_rerank_compute_us", rerank.compute_ns);

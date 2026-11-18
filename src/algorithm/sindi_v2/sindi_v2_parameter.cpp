@@ -15,10 +15,9 @@
 
 #include "sindi_v2_parameter.h"
 
-#include <cmath>
-
 #include <fmt/format.h>
 
+#include <cmath>
 #include <limits>
 
 #include "impl/logger/logger.h"
@@ -385,7 +384,8 @@ SINDIV2SearchParameter::FromJson(const JsonType& json) {
     CHECK_ARGUMENT(std::isfinite(parallel_n_candidate_ratio) and parallel_n_candidate_ratio >= 1,
                    "parallel_n_candidate_ratio must be finite and >= 1");
     partition_policy = search_json.Contains("partition_policy")
-                         ? search_json["partition_policy"].GetString() : "fixed";
+                           ? search_json["partition_policy"].GetString()
+                           : "fixed";
     CHECK_ARGUMENT(partition_policy == "fixed" or partition_policy == "dynamic",
                    "partition_policy must be fixed or dynamic");
     profile_search =

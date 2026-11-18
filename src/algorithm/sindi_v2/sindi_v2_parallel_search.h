@@ -11,10 +11,10 @@
 #include <memory>
 #include <string>
 
-#include "impl/searcher/sindi_cpu_timer.h"
-#include "impl/searcher/sindi_parallel_search.h"
 #include "algorithm/sindi_v2/sindi_v2_parameter.h"
 #include "datacell/sindi_search_term_datacell.h"
+#include "impl/searcher/sindi_cpu_timer.h"
+#include "impl/searcher/sindi_parallel_search.h"
 #include "query_context.h"
 
 namespace vsag {
