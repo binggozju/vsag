@@ -237,8 +237,9 @@ SindiV2SearchProfile::Dump(const SearchStatistics& statistics) const {
     if (enabled) {
         us("sindi_v2_prepare_us", prepare_ns);
         us(parallel ? "sindi_v2_partition_wall_us" : "sindi_v2_batch_wall_us", batch_ns);
-        if (!parallel)
+        if (!parallel) {
             us("sindi_v2_caller_compute_us", caller_compute_ns);
+        }
         if (parallel) {
             us("sindi_v2_clear_sum_us", clear_ns);
             us("sindi_v2_filter_sum_us", filter_ns);

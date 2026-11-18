@@ -19,6 +19,7 @@
 
 #include <cmath>
 #include <limits>
+#include <nlohmann/json.hpp>
 
 #include "impl/logger/logger.h"
 #include "inner_string_params.h"
@@ -381,8 +382,9 @@ SINDIV2SearchParameter::FromJson(const JsonType& json) {
         parallel_n_candidate_ratio =
             search_json["parallel_n_candidate_ratio"].GetInnerJson()->get<double>();
     }
-    CHECK_ARGUMENT(std::isfinite(parallel_n_candidate_ratio) and parallel_n_candidate_ratio >= 1,
-                   "parallel_n_candidate_ratio must be finite and >= 1");
+    const bool valid_ratio =
+        std::isfinite(parallel_n_candidate_ratio) and parallel_n_candidate_ratio >= 1;
+    CHECK_ARGUMENT(valid_ratio, "parallel_n_candidate_ratio must be finite and >= 1");
     partition_policy = search_json.Contains("partition_policy")
                            ? search_json["partition_policy"].GetString()
                            : "fixed";

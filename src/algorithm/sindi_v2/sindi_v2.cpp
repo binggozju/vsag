@@ -60,11 +60,13 @@ FilterPtr
 lease_serial_filter(const FilterPtr& filter, std::unique_ptr<ConcurrentFilterLease>& lease) {
     const auto* provider =
         filter ? dynamic_cast<const ConcurrentFilterProvider*>(filter.get()) : nullptr;
-    if (provider == nullptr)
+    if (provider == nullptr) {
         return filter;
+    }
     lease = provider->TryLease(1);
-    CHECK_ARGUMENT(lease and lease->evaluators.size() == 1 and lease->evaluators[0],
-                   "SINDI_V2 serial filter evaluator unavailable");
+    const bool valid_lease =
+        lease != nullptr and lease->evaluators.size() == 1 and lease->evaluators[0] != nullptr;
+    CHECK_ARGUMENT(valid_lease, "SINDI_V2 serial filter evaluator unavailable");
     return lease->evaluators[0];
 }
 
@@ -1169,8 +1171,9 @@ SINDIV2::search_impl(const SparseTermComputerPtr& computer,
         for (auto cursor = min_window_id; cursor <= max_window_id;) {
             cursor = metadata_filter_.NextMatchingWindow(
                 metadata_route, window_size_, cursor, max_window_id);
-            if (cursor > max_window_id)
+            if (cursor > max_window_id) {
                 break;
+            }
             const auto window = static_cast<uint32_t>(cursor++);
             windows.push_back(window);
             if (profile.diagnose) {

@@ -231,7 +231,9 @@ TEST_CASE("SINDIV2 partitions preserve scores when every local candidate fits",
             for (int64_t i = 0; i < result->GetDim(); ++i) {
                 REQUIRE(result->GetIds()[i] >= 105);
                 REQUIRE(result->GetIds()[i] < 110);
-                REQUIRE(result->GetDistances()[i] == -99.0F);
+                // Floating point accumulation may differ by a few ULPs; residual
+                // contamination would instead change the winning IDs or score materially.
+                REQUIRE(std::abs(result->GetDistances()[i] + 99.0F) < 0.0001F);
             }
         }
     }
@@ -455,14 +457,16 @@ TEST_CASE("SINDIV2 pruned partitions keep known high scores across repeated queu
                 for (uint32_t i = 0; i < expected.size(); ++i) {
                     REQUIRE(result->GetIds()[i] == expected[i]);
                     unique.insert(result->GetIds()[i]);
+                    const float value = static_cast<float>(expected[i] - 999);
+                    // SQ8 coarse accumulation uses byte codes, without dequantizing.
+                    // Rerank uses the original values; the code-space score is exact.
+                    const float coarse_value = quantization == SparseValueQuantizationType::SQ8
+                                                   ? static_cast<float>(static_cast<uint8_t>(
+                                                         (value - 1.0F) / 319.0F * 255.0F))
+                                                   : value;
                     const float expected_distance =
-                        1.0F - (reorder ? 7.25F : 6.0F) * static_cast<float>(expected[i] - 999);
-                    if (reorder or quantization != SparseValueQuantizationType::SQ8) {
-                        REQUIRE(result->GetDistances()[i] == expected_distance);
-                    } else {
-                        // SQ8's scalar error is bounded by its global 319/255 step.
-                        REQUIRE(std::abs(result->GetDistances()[i] - expected_distance) < 12.0F);
-                    }
+                        1.0F - (reorder ? 7.25F * value : 6.0F * coarse_value);
+                    REQUIRE(result->GetDistances()[i] == expected_distance);
                 }
                 REQUIRE(unique.size() == 4);
                 const auto stats = result->GetStatistics({"sindi_v2_partitions",
@@ -511,7 +515,9 @@ TEST_CASE("SINDIV2 pruned partitions keep known high scores across repeated queu
     }
     SECTION("a partial metadata window disables posting pruning") {
         std::vector<std::string> hosts(count, "other");
-        hosts[0] = "target";
+        // Use a low posting with a positive SQ8 code. The global minimum
+        // encodes as zero and is not a candidate even on the serial full scan.
+        hosts[4] = "target";
         base->StringMetadata(SINDI_HOST_METADATA_NAME, hosts.data());
         SINDIV2 metadata_index(parameters, common);
         REQUIRE(metadata_index.Build(base).empty());
@@ -519,10 +525,10 @@ TEST_CASE("SINDIV2 pruned partitions keep known high scores across repeated queu
         query->StringMetadata(SINDI_HOST_METADATA_NAME, &host);
         for (const auto* policy : {"fixed", "dynamic"}) {
             auto filter = std::make_shared<IndependentFilter>();
-            filter->predicate = [](int64_t id) { return id == 1000; };
+            filter->predicate = [](int64_t id) { return id == 1004; };
             const auto result = metadata_index.KnnSearch(query, 4, request(policy, 4), filter);
             REQUIRE(result->GetDim() == 1);
-            REQUIRE(result->GetIds()[0] == 1000);
+            REQUIRE(result->GetIds()[0] == 1004);
             REQUIRE(result->GetStatistics({"sindi_v2_scanned_postings"})[0] == "8");
             REQUIRE(filter->counters->leases.load() == 0);
         }

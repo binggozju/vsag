@@ -194,7 +194,8 @@ SindiParallelPlan::Make(
     CHECK_ARGUMENT(plan.capacity <= maximum, "parallel candidate capacity exceeds limit");
     // Keep each local heap large enough for TopK without exceeding the total budget.
     // Otherwise concentrated matches can underfill even a completed search.
-    CHECK_ARGUMENT(group_limit >= 1 and group_limit <= 16, "invalid SINDI group limit");
+    const bool valid_group_limit = group_limit >= 1 and group_limit <= 16;
+    CHECK_ARGUMENT(valid_group_limit, "invalid SINDI group limit");
     const auto groups = std::min({uint64_t{group_limit}, windows, plan.capacity / topk});
     plan.boundaries.push_back(0);
     for (uint64_t i = 0; i < groups; ++i) {
@@ -390,7 +391,9 @@ SearchSindiPartitions(const SindiPartitionSearchRequest& request,
                             const std::array<uint64_t, 5> limits{
                                 50000, 200000, 1000000, 5000000, 20000000};
                             uint64_t bucket = 0;
-                            while (bucket < limits.size() and elapsed >= limits[bucket]) ++bucket;
+                            while (bucket < limits.size() and elapsed >= limits[bucket]) {
+                                ++bucket;
+                            }
                             ++slot_stats->histogram[bucket];
                             if (elapsed >= slot_stats->compute_max_ns) {
                                 slot_stats->compute_max_ns = elapsed;
@@ -433,6 +436,10 @@ SearchSindiPartitions(const SindiPartitionSearchRequest& request,
                         if (part_stats != nullptr) {
                             part_stats->candidates = part.heap.size();
                         }
+                        // Preserve the original SINDI processed-window counter,
+                        // which includes a window stopped during candidate consumption.
+                        // Optional diagnostics separately count fully consumed windows.
+                        state.completed_windows.fetch_add(1, std::memory_order_relaxed);
                         if (stopped) {
                             break;
                         }
@@ -441,7 +448,6 @@ SearchSindiPartitions(const SindiPartitionSearchRequest& request,
                             ++part_stats->windows;
                         }
                         ++part.cursor;
-                        state.completed_windows.fetch_add(1, std::memory_order_relaxed);
                     }
                 }
                 if (part.cursor < part.end and not state.Stopped()) {
