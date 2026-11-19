@@ -134,7 +134,6 @@ Search parameters live under `{"sindi_v2": {...}}`.
 | `n_candidate` | int | `0` | Coarse candidate count; `0` uses the index default derived from `topk`. |
 | `window_parallelism` | integer | `1` | Requested execution slots including the caller, `[1,16]`; eligible immutable in-memory KNN partitions compute, filter and collect candidates independently. |
 | `parallel_n_candidate_ratio` | number | `2` | Total local capacity multiplier R (finite, >=1); merged rerank candidates remain bounded by N. |
-| `partition_policy` | string | `fixed` | `fixed` / `dynamic` |
 | `profile_search` | bool | `false` | Collect partition phases, cumulative work and logical rerank reads. |
 | `diagnose_search` | bool | `false` | Collect bounded candidate and result digests for controlled quality comparisons. Hashes are diagnostic evidence, not proof of equality. |
 | `profile_cpu` | bool | `false` | Sample caller and background-worker CPU time; unavailable clocks are explicitly marked. |
@@ -154,7 +153,7 @@ either ratio is greater than `0.1`, it uses term-list heap insertion.
 ### Partitioned parallel KNN
 
 Inject a shared `SearchResource` through `Engine` before index creation/loading. Request
-`{"sindi_v2":{"window_parallelism":4,"parallel_n_candidate_ratio":2,"partition_policy":"fixed"}}`.
+`{"sindi_v2":{"window_parallelism":4,"parallel_n_candidate_ratio":2}}`.
 P1, missing resources, mutable/file postings, range and reasoning retain serial execution.
 An eligible search with only one granted slot retains its partition plan and deadline.
 
@@ -163,12 +162,11 @@ Filters and update those heaps; the caller merges at most N candidates and runs 
 A non-null parallel Filter must implement `ConcurrentFilterProvider`; a serial fallback leases one
 evaluator. Ordinary filters are not made parallel by a global lock.
 
-Let C=ceil(R*N), W be routed windows, K_plan=K (N for a distance threshold). The default `fixed`
-plan has G=min(16,W,floor(C/K_plan)); experimental `dynamic` uses P instead of 16. Quotas sum to C.
-Dynamic uses the validated request P, not transient granted slots. Slot admission does not change G
-or quotas. Local truncation and pruning may change results,
-including ties; serial approximate output is a comparator, not ground truth. Application adapters
-may require explicit permission for the experimental selector. P1 does not apply R or partitions.
+Let C=ceil(R*N), W be routed windows, K_plan=K (N for a distance threshold).
+The plan has G=min(16,W,floor(C/K_plan)); quotas sum to C. The partition count is
+independent of the requested and granted execution slots. Slot admission does not change G
+or quotas. Local truncation and pruning may change results, including ties; serial approximate
+output is a comparator, not ground truth. P1 does not apply R or partitions.
 
 Parallel deadlines cover lock wait, preparation, partition work, merge, rerank and publication.
 Cancellation is cooperative. Submitted tasks drain before errors escape. Callback permits are

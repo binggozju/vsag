@@ -167,28 +167,24 @@ TEST_CASE("SINDIV2 partitions preserve scores when every local candidate fits",
     // or quota-limited approximate searches must reproduce serial IDs.
     auto serial_filter = std::make_shared<PredicateFilter>(std::make_shared<FilterCounters>());
     const auto serial = index.KnnSearch(query, 5, request(1, 0), serial_filter);
-    for (const auto* policy : {"fixed", "dynamic"}) {
-        for (const auto p : {2U, 4U}) {
-            auto filter = std::make_shared<IndependentFilter>();
-            auto json = JsonType::Parse(request(p, 0));
-            json["sindi_v2"]["partition_policy"].SetString(policy);
-            const auto parallel = index.KnnSearch(query, 5, json.Dump(), filter);
-            SameResults(parallel, serial);
-            REQUIRE(parallel->GetStatistics({"sindi_v2_strategy"})[0] == "\"partition_search\"");
-            REQUIRE(parallel->GetStatistics({"sindi_v2_execution_complete"})[0] == "true");
-            const auto plan_stats = parallel->GetStatistics({"sindi_v2_partitions",
-                                                             "sindi_v2_candidate_capacity",
-                                                             "sindi_v2_n_candidate",
-                                                             "sindi_v2_routed_windows",
-                                                             "sindi_v2_windows_consumed"});
-            REQUIRE(std::stoull(plan_stats[0]) == (std::string(policy) == "fixed" ? 8 : p));
-            REQUIRE(std::stoull(plan_stats[1]) == 74);
-            REQUIRE(std::stoull(plan_stats[2]) == 37);
-            REQUIRE(plan_stats[3] == plan_stats[4]);
-            REQUIRE(filter->counters->leases.load() == 0);
-            REQUIRE(common.search_resources_->busy == 0);
-            REQUIRE(common.search_resources_->callers == 0);
-        }
+    for (const auto p : {2U, 4U}) {
+        auto filter = std::make_shared<IndependentFilter>();
+        const auto parallel = index.KnnSearch(query, 5, request(p, 0), filter);
+        SameResults(parallel, serial);
+        REQUIRE(parallel->GetStatistics({"sindi_v2_strategy"})[0] == "\"partition_search\"");
+        REQUIRE(parallel->GetStatistics({"sindi_v2_execution_complete"})[0] == "true");
+        const auto plan_stats = parallel->GetStatistics({"sindi_v2_partitions",
+                                                         "sindi_v2_candidate_capacity",
+                                                         "sindi_v2_n_candidate",
+                                                         "sindi_v2_routed_windows",
+                                                         "sindi_v2_windows_consumed"});
+        REQUIRE(std::stoull(plan_stats[0]) == 8);
+        REQUIRE(std::stoull(plan_stats[1]) == 74);
+        REQUIRE(std::stoull(plan_stats[2]) == 37);
+        REQUIRE(plan_stats[3] == plan_stats[4]);
+        REQUIRE(filter->counters->leases.load() == 0);
+        REQUIRE(common.search_resources_->busy == 0);
+        REQUIRE(common.search_resources_->callers == 0);
     }
     SECTION("basic execution counters remain available without timed profiling") {
         auto options = JsonType::Parse(request(4, 0));
@@ -345,7 +341,7 @@ TEST_CASE("SINDIV2 partitions preserve scores when every local candidate fits",
     }
 }
 
-TEST_CASE("SINDIV2 partition options validate ratio and selector",
+TEST_CASE("SINDIV2 partition options validate ratio and width",
           "[ut][SINDIV2][SINDIV2Parameter][SINDIV2Parallel]") {
     SINDIV2SearchParameter parameter;
     parameter.FromJson(JsonType::Parse(R"({"sindi_v2":{"window_parallelism":4,
@@ -358,16 +354,13 @@ TEST_CASE("SINDIV2 partition options validate ratio and selector",
     REQUIRE(roundtrip.window_parallelism == 4);
     REQUIRE(roundtrip.profile_search);
     REQUIRE(roundtrip.parallel_n_candidate_ratio == 2.0);
-    REQUIRE(roundtrip.partition_policy == "fixed");
     parameter.FromJson(JsonType::Parse(R"({"sindi_v2":{
-        "parallel_n_candidate_ratio":4,"partition_policy":"dynamic"}})"));
+        "parallel_n_candidate_ratio":4}})"));
     REQUIRE(parameter.parallel_n_candidate_ratio == 4.0);
-    REQUIRE(parameter.partition_policy == "dynamic");
     for (const char* json : {R"({"sindi_v2":{"window_parallelism":0}})",
                              R"({"sindi_v2":{"window_parallelism":17}})",
                              R"({"sindi_v2":{"window_parallelism":2.5}})",
                              R"({"sindi_v2":{"parallel_n_candidate_ratio":0.5}})",
-                             R"({"sindi_v2":{"partition_policy":"unknown"}})",
                              R"({"sindi_v2":{"profile_search":"true"}})"}) {
         REQUIRE_THROWS(parameter.FromJson(JsonType::Parse(json)));
     }
@@ -376,15 +369,13 @@ TEST_CASE("SINDIV2 partition options validate ratio and selector",
 TEST_CASE("SINDI partition planners bound quotas independently of granted workers",
           "[ut][SINDI][SINDIV2][SINDIV2Parallel]") {
     const auto normal = SindiParallelPlan::Make(658, 300, 2, 100);
-    const auto dynamic = SindiParallelPlan::Make(658, 300, 2, 100, 4);
     REQUIRE(normal.quotas.size() == 6);
-    REQUIRE(dynamic.quotas.size() == 4);
     REQUIRE(std::accumulate(normal.quotas.begin(), normal.quotas.end(), uint64_t{0}) == 600);
-    REQUIRE(std::accumulate(dynamic.quotas.begin(), dynamic.quotas.end(), uint64_t{0}) == 600);
-    for (auto quota : dynamic.quotas) REQUIRE(quota == 150);
+    for (auto quota : normal.quotas) REQUIRE(quota == 100);
     const auto threshold = SindiParallelPlan::Make(658, 300, 2, 300);
     REQUIRE(threshold.quotas.size() == 2);
-    REQUIRE_THROWS(SindiParallelPlan::Make(658, 300, 2, 100, 0));
+    REQUIRE(SindiParallelPlan::Make(658, 3000, 2, 100).quotas.size() == 16);
+    REQUIRE(SindiParallelPlan::Make(3, 300, 2, 100).quotas.size() == 3);
 }
 
 TEST_CASE("SINDIV2 pruned partitions keep known high scores across repeated queue handoffs",
@@ -432,13 +423,12 @@ TEST_CASE("SINDIV2 pruned partitions keep known high scores across repeated queu
     auto query = Dataset::Make()->NumElements(1)->SparseVectors(&sparse)->Owner(false);
     SINDIV2 index(parameters, common);
     REQUIRE(index.Build(base).empty());
-    const auto request = [](const char* policy, uint32_t width, uint64_t budget = 0) {
+    const auto request = [](uint32_t width, uint64_t budget = 0) {
         return fmt::format(R"({{"sindi_v2":{{"window_parallelism":{},
-            "partition_policy":"{}","n_candidate":12,"query_prune_ratio":0.3,
+            "n_candidate":12,"query_prune_ratio":0.3,
             "term_prune_ratio":0.25,"term_retain_threshold":240,
             "filter_callback_limit":{},"profile_search":true,"diagnose_search":true}}}})",
                            width,
-                           policy,
                            budget);
     };
     // Optional build pruning drops term 4, leaving the two dominant terms intact.
@@ -446,72 +436,68 @@ TEST_CASE("SINDIV2 pruned partitions keep known high scores across repeated queu
     // postings. The strong filter accepts only local position 2 in each window.
     // Both query terms touch that same ID, exercising duplicate posting visits.
     const std::array<int64_t, 4> expected{1318, 1314, 1310, 1306};
-    for (const auto* policy : {"fixed", "dynamic"}) {
-        for (const uint32_t width : {2U, 4U}) {
-            for (uint32_t repeat = 0; repeat < 3; ++repeat) {
-                auto filter = std::make_shared<IndependentFilter>();
-                filter->predicate = [](int64_t id) { return id % 4 == 2; };
-                const auto result = index.KnnSearch(query, 4, request(policy, width), filter);
-                REQUIRE(result->GetDim() == 4);
-                std::set<int64_t> unique;
-                for (uint32_t i = 0; i < expected.size(); ++i) {
-                    REQUIRE(result->GetIds()[i] == expected[i]);
-                    unique.insert(result->GetIds()[i]);
-                    const float value = static_cast<float>(expected[i] - 999);
-                    // SQ8 coarse accumulation uses byte codes, without dequantizing.
-                    // Rerank uses the original values; the code-space score is exact.
-                    const float coarse_value = quantization == SparseValueQuantizationType::SQ8
-                                                   ? static_cast<float>(static_cast<uint8_t>(
-                                                         (value - 1.0F) / 319.0F * 255.0F))
-                                                   : value;
-                    const float expected_distance =
-                        1.0F - (reorder ? 7.25F * value : 6.0F * coarse_value);
-                    REQUIRE(result->GetDistances()[i] == expected_distance);
-                }
-                REQUIRE(unique.size() == 4);
-                const auto stats = result->GetStatistics({"sindi_v2_partitions",
-                                                          "sindi_v2_windows_computed",
-                                                          "sindi_v2_windows_consumed",
-                                                          "sindi_v2_scanned_postings",
-                                                          "sindi_v2_granted_slots",
-                                                          "sindi_v2_execution_complete",
-                                                          "sindi_v2_candidates"});
-                const uint32_t groups = std::string(policy) == "fixed" ? 6 : width;
-                REQUIRE(std::stoull(stats[0]) == groups);
-                REQUIRE(std::stoull(stats[1]) == 80);
-                REQUIRE(stats[1] == stats[2]);
-                REQUIRE(std::stoull(stats[3]) == 480);
-                REQUIRE(stats[5] == "true");
-                REQUIRE(std::stoull(stats[6]) == 12);
-                if (common.search_resources_->slots > 1 and common.search_resources_->limit > 0) {
-                    REQUIRE(std::stoull(stats[4]) > 1);
-                }
-                for (uint32_t group = 0; group < groups; ++group) {
-                    const auto prefix = "sindi_v2_partition_" + std::to_string(group);
-                    const auto local = result->GetStatistics({prefix + "_windows",
-                                                              prefix + "_candidates",
-                                                              prefix + "_quota",
-                                                              prefix + "_work_us"});
-                    REQUIRE(std::stoull(local[0]) > 4);
-                    REQUIRE(local[1] == local[2]);
-                    REQUIRE(std::stod(local[3]) > 0);
-                }
-                REQUIRE(filter->counters->leases.load() == 0);
-                REQUIRE(common.search_resources_->busy == 0);
-                REQUIRE(common.search_resources_->callers == 0);
+    for (const uint32_t width : {2U, 4U}) {
+        for (uint32_t repeat = 0; repeat < 3; ++repeat) {
+            auto filter = std::make_shared<IndependentFilter>();
+            filter->predicate = [](int64_t id) { return id % 4 == 2; };
+            const auto result = index.KnnSearch(query, 4, request(width), filter);
+            REQUIRE(result->GetDim() == 4);
+            std::set<int64_t> unique;
+            for (uint32_t i = 0; i < expected.size(); ++i) {
+                REQUIRE(result->GetIds()[i] == expected[i]);
+                unique.insert(result->GetIds()[i]);
+                const float value = static_cast<float>(expected[i] - 999);
+                // SQ8 coarse accumulation uses byte codes, without dequantizing.
+                // Rerank uses the original values; the code-space score is exact.
+                const float coarse_value =
+                    quantization == SparseValueQuantizationType::SQ8
+                        ? static_cast<float>(static_cast<uint8_t>((value - 1.0F) / 319.0F * 255.0F))
+                        : value;
+                const float expected_distance =
+                    1.0F - (reorder ? 7.25F * value : 6.0F * coarse_value);
+                REQUIRE(result->GetDistances()[i] == expected_distance);
             }
+            REQUIRE(unique.size() == 4);
+            const auto stats = result->GetStatistics({"sindi_v2_partitions",
+                                                      "sindi_v2_windows_computed",
+                                                      "sindi_v2_windows_consumed",
+                                                      "sindi_v2_scanned_postings",
+                                                      "sindi_v2_granted_slots",
+                                                      "sindi_v2_execution_complete",
+                                                      "sindi_v2_candidates"});
+            const uint32_t groups = 6;
+            REQUIRE(std::stoull(stats[0]) == groups);
+            REQUIRE(std::stoull(stats[1]) == 80);
+            REQUIRE(stats[1] == stats[2]);
+            REQUIRE(std::stoull(stats[3]) == 480);
+            REQUIRE(stats[5] == "true");
+            REQUIRE(std::stoull(stats[6]) == 12);
+            if (common.search_resources_->slots > 1 and common.search_resources_->limit > 0) {
+                REQUIRE(std::stoull(stats[4]) > 1);
+            }
+            for (uint32_t group = 0; group < groups; ++group) {
+                const auto prefix = "sindi_v2_partition_" + std::to_string(group);
+                const auto local = result->GetStatistics({prefix + "_windows",
+                                                          prefix + "_candidates",
+                                                          prefix + "_quota",
+                                                          prefix + "_work_us"});
+                REQUIRE(std::stoull(local[0]) > 4);
+                REQUIRE(local[1] == local[2]);
+                REQUIRE(std::stod(local[3]) > 0);
+            }
+            REQUIRE(filter->counters->leases.load() == 0);
+            REQUIRE(common.search_resources_->busy == 0);
+            REQUIRE(common.search_resources_->callers == 0);
         }
     }
     SECTION("pruned candidate consumption shares one callback budget") {
-        for (const auto* policy : {"fixed", "dynamic"}) {
-            auto filter = std::make_shared<IndependentFilter>();
-            filter->predicate = [](int64_t id) { return id % 4 == 2; };
-            const auto result = index.KnnSearch(query, 4, request(policy, 4, 3), filter);
-            REQUIRE(filter->counters->calls.load() <= 3);
-            REQUIRE(result->GetStatistics({"sindi_v2_stop_reason"})[0] == "\"callback_limit\"");
-            REQUIRE(result->GetStatistics({"sindi_v2_execution_complete"})[0] == "false");
-            REQUIRE(filter->counters->leases.load() == 0);
-        }
+        auto filter = std::make_shared<IndependentFilter>();
+        filter->predicate = [](int64_t id) { return id % 4 == 2; };
+        const auto result = index.KnnSearch(query, 4, request(4, 3), filter);
+        REQUIRE(filter->counters->calls.load() <= 3);
+        REQUIRE(result->GetStatistics({"sindi_v2_stop_reason"})[0] == "\"callback_limit\"");
+        REQUIRE(result->GetStatistics({"sindi_v2_execution_complete"})[0] == "false");
+        REQUIRE(filter->counters->leases.load() == 0);
     }
     SECTION("a partial metadata window disables posting pruning") {
         std::vector<std::string> hosts(count, "other");
@@ -523,15 +509,13 @@ TEST_CASE("SINDIV2 pruned partitions keep known high scores across repeated queu
         REQUIRE(metadata_index.Build(base).empty());
         std::string host = "target";
         query->StringMetadata(SINDI_HOST_METADATA_NAME, &host);
-        for (const auto* policy : {"fixed", "dynamic"}) {
-            auto filter = std::make_shared<IndependentFilter>();
-            filter->predicate = [](int64_t id) { return id == 1004; };
-            const auto result = metadata_index.KnnSearch(query, 4, request(policy, 4), filter);
-            REQUIRE(result->GetDim() == 1);
-            REQUIRE(result->GetIds()[0] == 1004);
-            REQUIRE(result->GetStatistics({"sindi_v2_scanned_postings"})[0] == "8");
-            REQUIRE(filter->counters->leases.load() == 0);
-        }
+        auto filter = std::make_shared<IndependentFilter>();
+        filter->predicate = [](int64_t id) { return id == 1004; };
+        const auto result = metadata_index.KnnSearch(query, 4, request(4), filter);
+        REQUIRE(result->GetDim() == 1);
+        REQUIRE(result->GetIds()[0] == 1004);
+        REQUIRE(result->GetStatistics({"sindi_v2_scanned_postings"})[0] == "8");
+        REQUIRE(filter->counters->leases.load() == 0);
     }
 }
 

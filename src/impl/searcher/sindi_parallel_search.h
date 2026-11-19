@@ -57,11 +57,7 @@ struct SindiPartitionSearchRequest {
 
 struct SindiParallelPlan {
     static SindiParallelPlan
-    Make(uint64_t windows,
-         uint64_t candidates,
-         double ratio,
-         uint64_t topk,
-         uint32_t group_limit = 16);
+    Make(uint64_t windows, uint64_t candidates, double ratio, uint64_t topk);
 
     uint64_t candidates{0};
     uint64_t capacity{0};
@@ -120,7 +116,6 @@ struct SindiParallelState {
     std::unique_ptr<ConcurrentFilterLease> lease;
     std::function<FilterPtr(const FilterPtr&)> map_filter;
     double ratio{2};
-    uint32_t group_limit{16};
     uint64_t planning_topk{0};
     bool clear_window_scratch{false};
     // Borrowed until SearchSindiPartitions drains. Null keeps the original

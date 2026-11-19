@@ -950,8 +950,6 @@ SINDIV2::knn_search(const DatasetPtr& query,
     partition_state.user_filter = filter;
     partition_state.requested = search_param.window_parallelism;
     partition_state.ratio = search_param.parallel_n_candidate_ratio;
-    partition_state.group_limit =
-        search_param.partition_policy == "dynamic" ? search_param.window_parallelism : 16;
     partition_state.planning_topk = threshold.has_value() ? inner_param.ef : inner_param.topk;
     partition_state.callback_limit = search_param.filter_callback_limit;
     partition_state.deadline = execution.deadline;

@@ -33,7 +33,6 @@ make_sindi_v2_profile(const SINDIV2SearchParameter& parameters,
     profile.diagnose = parameters.diagnose_search;
     profile.profile_cpu = parameters.profile_cpu;
     profile.requested = parameters.window_parallelism;
-    profile.partition_policy = parameters.partition_policy == "dynamic" ? "dynamic" : "fixed";
     profile.candidate_ratio = parameters.parallel_n_candidate_ratio;
     if (parameters.enable_time_record && profile.requested > 1) {
         const auto timeout = parameters.timeout_ms;
@@ -195,7 +194,6 @@ SindiV2SearchProfile::Dump(const SearchStatistics& statistics) const {
     json["sindi_v2_requested_slots"].SetUint64(requested);
     json["sindi_v2_granted_slots"].SetUint64(granted);
     if (parallel) {
-        json["sindi_v2_partition_policy"].SetString(partition_policy);
         json["sindi_v2_partitions"].SetUint64(partitions);
         json["sindi_v2_candidate_ratio"].SetDouble(candidate_ratio);
         json["sindi_v2_candidate_capacity"].SetUint64(capacity);

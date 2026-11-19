@@ -128,7 +128,6 @@ SINDI_V2 仍保留 term-first posting 布局。发布时间过滤支持 mutable�
 | `n_candidate` | int | `0` | 粗排候选数量；`0` 使用根据 `topk` 推导的索引默认值。 |
 | `window_parallelism` | integer | `1` | 请求执行槽位数，包含调用线程，范围 `[1,16]`；符合条件的immutable内存KNN在分区内完成累分、过滤和候选维护。 |
 | `parallel_n_candidate_ratio` | number | `2` | 总局部容量倍率R，有限且>=1；归并精排候选仍不超过N。 |
-| `partition_policy` | string | `fixed` | `fixed` / `dynamic` |
 | `profile_search` | bool | `false` | 采集阶段墙钟、window 工作量、批次摘要及精排逻辑读取量。 |
 | `diagnose_search` | bool | `false` | 采集有界候选堆和最终结果摘要，用于受控一致性对比；摘要相同不能代替逐项比较。 |
 | `profile_cpu` | bool | `false` | 采集调用线程及后台worker CPU时间；时钟不可用时明确标识。 |
@@ -146,16 +145,16 @@ SINDI V2 会根据构建阶段的 `doc_prune_ratio` 与检索阶段的 `query_pr
 ### 分区并行 KNN
 
 创建/加载索引前通过Engine注入共享SearchResource，请求示例：
-`{"sindi_v2":{"window_parallelism":4,"parallel_n_candidate_ratio":2,"partition_policy":"fixed"}}`。
+`{"sindi_v2":{"window_parallelism":4,"parallel_n_candidate_ratio":2}}`。
 P1、无资源、mutable/文件posting、范围和reasoning保持串行；符合条件但实际仅获准1槽时仍保留分区计划与deadline。
 
 每分区持有局部候选堆，少量持久槽位完成累分、独立Filter和候选维护，调用线程归并最多N个候选，
 沿用原精排。非空并行Filter必须实现ConcurrentFilterProvider，串行回退租借1个evaluator，不能用全局锁伪装独立Filter。
 
 C=ceil(R*N)，W为路由window数，K_plan通常为K、带distance threshold时为N。
-默认fixed规划G=min(16,W,floor(C/K_plan))，实验dynamic将16替换为请求P；配额之和为C。
-dynamic按请求P计算，不随瞬时获准槽位重分区；fixed也不保证恰好16区。瞬时准入只减少槽位，不改变G。局部截断、剪枝及同分边界可能造成结果差异；串行近似结果不是真值。
-应用适配层可以要求实验许可。P1不启用分区与倍率。
+规划G=min(16,W,floor(C/K_plan))，配额之和为C；16是上限，并不保证恰好16区。
+分区数与请求、瞬时获准槽位数独立，槽位准入不改变G与配额。
+局部截断、剪枝及同分边界可能造成结果差异；串行近似结果不是真值。P1不启用分区与倍率。
 
 并行deadline覆盖锁等待、准备、执行、归并、精排和输出；取消是协作式，异常前先drain。
 回调预算在一次VSAG调用的所有分区间共享；额度耗尽可返回部分候选。

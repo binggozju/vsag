@@ -32,7 +32,6 @@ struct SindiV2SearchProfile {
     bool parallel{false};
     uint32_t requested{1};
     uint32_t granted{1};
-    const char* partition_policy{"fixed"};
     double candidate_ratio{2};
     uint64_t partitions{0};
     uint64_t capacity{0};
