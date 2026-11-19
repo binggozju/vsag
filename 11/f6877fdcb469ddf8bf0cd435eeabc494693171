@@ -1,0 +1,19 @@
+src/algorithm/sindi_v2/sindi_v2_parallel_search_test.cpp
+  s_f37ee119f37e39::t_a9a28fc687d6b0 479-480
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "11f6877fdcb469ddf8bf0cd435eeabc494693171",
+  "prompts": {},
+  "sessions": {
+    "s_f37ee119f37e39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1e3b3-f61e-70a3-b5a6-26dd0876bf72",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "binggozju <binggozhan@163.com>"
+    }
+  }
+}
