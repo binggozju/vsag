@@ -1,0 +1,29 @@
+docs/docs/en/src/indexes/sindi_v2.md
+  s_f37ee119f37e39::t_0555490473764d 144,180-182
+docs/docs/zh/src/indexes/sindi_v2.md
+  s_f37ee119f37e39::t_a9dc7c21f25c0c 136,164-166
+src/algorithm/sindi_v2/sindi_v2.cpp
+  s_f37ee119f37e39::t_7d4c219ea204ac 956
+src/algorithm/sindi_v2/sindi_v2_parallel_search_test.cpp
+  s_f37ee119f37e39::t_27762ec4619bc9 159,165,360-363,375,438,445,563,617-618,665-688,692,694-695,700,742,748,753-757,759-764,766-767
+src/impl/searcher/sindi_parallel_search.cpp
+  s_f37ee119f37e39::t_92bf9ff8b6e30f 366
+src/impl/searcher/sindi_parallel_search.h
+  s_f37ee119f37e39::t_6a9d6e587136a3 120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "17667a325ba63cef4379c9381567401076f19cd4",
+  "prompts": {},
+  "sessions": {
+    "s_f37ee119f37e39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1e3b3-f61e-70a3-b5a6-26dd0876bf72",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "binggozju <binggozhan@163.com>"
+    }
+  }
+}
