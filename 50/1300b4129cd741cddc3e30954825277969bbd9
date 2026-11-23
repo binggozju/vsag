@@ -1,0 +1,59 @@
+src/datacell/immutable_sindi_term_datacell.cpp
+  s_f37ee119f37e39::t_62c46eb78344dc 387-420
+docs/docs/en/src/indexes/sindi_v2.md
+  s_f37ee119f37e39::t_26fd48387ebe70 144-145,170-177,181-189,206-209
+docs/docs/zh/src/indexes/sindi_v2.md
+  s_f37ee119f37e39::t_c2bfe08841864d 136-137,159-170,181,185-188
+src/algorithm/sindi_v2/sindi_v2.cpp
+  s_f37ee119f37e39::t_d4db0b9e316205 956-964,1338-1340
+src/algorithm/sindi_v2/sindi_v2_parallel_search.cpp
+  s_f37ee119f37e39::t_7e013a5c106d57 130,157-159,228-234,236-237,244,276-278,288-292
+src/algorithm/sindi_v2/sindi_v2_parallel_search.h
+  s_f37ee119f37e39::t_807f01c470fcac 16,43-46,86
+src/algorithm/sindi_v2/sindi_v2_parallel_search_test.cpp
+  s_f37ee119f37e39::t_c98ad81b79f526 24,159-161,164-168,361-371,380-381,444-446,450-454,572-573,626-772
+src/algorithm/sindi_v2/sindi_v2_parameter.cpp
+  s_f37ee119f37e39::t_00034f46658504 388-391,467-468
+src/algorithm/sindi_v2/sindi_v2_parameter.h
+  s_f37ee119f37e39::t_d1cdc1f25c6331 96-98
+src/datacell/immutable_sindi_term_datacell.h
+  s_f37ee119f37e39::t_f74f96b8ea12ff 92-98
+src/datacell/immutable_sindi_term_datacell_test.cpp
+  s_f37ee119f37e39::t_017197bb0b62d1 17,384-440
+src/datacell/sindi_search_term_datacell.h
+  s_f37ee119f37e39::t_4c8597af39abd6 139-143,166-178
+src/datacell/sparse_read_execution.cpp
+  s_f37ee119f37e39::t_819709b9875418 1-114
+src/datacell/sparse_read_execution.h
+  s_f37ee119f37e39::t_b5e2ff54a15b1d 1-37
+src/datacell/sparse_read_execution_test.cpp
+  s_f37ee119f37e39::t_8d6f9938a4ff2e 1-99
+src/datacell/sparse_vector_datacell.h
+  s_f37ee119f37e39::t_7d7ad979de962c 28,32
+src/datacell/sparse_vector_datacell.inl
+  s_f37ee119f37e39::t_101250c93b432f 156-173
+src/datacell/sparse_vector_datacell_test.cpp
+  s_f37ee119f37e39::t_eb109cdedad42f 24,28,754-817
+src/impl/searcher/sindi_parallel_search.cpp
+  s_f37ee119f37e39::t_5f6015e160d925 366,370-373,450-467
+src/impl/searcher/sindi_parallel_search.h
+  s_f37ee119f37e39::t_d8889804a40c72 75-77,109,124
+src/query_context.h
+  s_f37ee119f37e39::t_14e795bf673a0a 39,53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "501300b4129cd741cddc3e30954825277969bbd9",
+  "prompts": {},
+  "sessions": {
+    "s_f37ee119f37e39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1e3b3-f61e-70a3-b5a6-26dd0876bf72",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "binggozju <binggozhan@163.com>"
+    }
+  }
+}
